@@ -22,7 +22,12 @@ You can install the development version of ELRSepTests from
 [GitHub](https://github.com/) with:
 
 ``` r
-# install.packages("pak")
+# Option 1: using remotes (widely supported)
+install.packages("remotes")
+remotes::install_github("alexpete/ELRSepTests")
+
+# Option 2: using pak (faster, recommended)
+install.packages("pak")
 pak::pak("alexpete/ELRSepTests")
 ```
 
@@ -47,17 +52,18 @@ X <- array(rnorm(n * p1 * p2), dim = c(n, p1, p2))
 # Run the main testing function
 res <- ELRSepTests(
   X = X,
-  JTest = 2,
-  LTest = 2,
+  JTest = 2L,
+  LTest = 2L,
   nullHyp = c('ParSep', 'WkSep', 'Sep'),
   B = 100
 )
 
 
 res$tStats
-#>     ParSep      WkSep        Sep 
-#> 4.56986975 6.87955536 0.05054832
+#>            (2, 2)
+#> ParSep 4.56986975
+#> WkSep  6.87955536
+#> Sep    0.05054832
 res$bootRes$bootPval
-#>    ParSep     WkSep       Sep 
-#> 0.6039604 0.3762376 0.9207921
+#> NULL
 ```

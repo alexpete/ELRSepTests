@@ -29,8 +29,13 @@ evaluation and optimization, combining R and C++ (via Rcpp) for efficient comput
 
 You can install the development version of ELRSepTests from [GitHub](https://github.com/) with:
 
-``` r
-# install.packages("pak")
+```r
+# Option 1: using remotes (widely supported)
+install.packages("remotes")
+remotes::install_github("alexpete/ELRSepTests")
+
+# Option 2: using pak (faster, recommended)
+install.packages("pak")
 pak::pak("alexpete/ELRSepTests")
 ```
 
@@ -55,8 +60,8 @@ X <- array(rnorm(n * p1 * p2), dim = c(n, p1, p2))
 # Run the main testing function
 res <- ELRSepTests(
   X = X,
-  JTest = 2,
-  LTest = 2,
+  JTest = 2L,
+  LTest = 2L,
   nullHyp = c('ParSep', 'WkSep', 'Sep'),
   B = 100
 )

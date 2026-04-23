@@ -64,6 +64,9 @@ res$tStats
 #> ParSep 4.56986975
 #> WkSep  6.87955536
 #> Sep    0.05054832
-res$bootRes$bootPval
-#> NULL
+res$bootPval
+#>           (2, 2)
+#> ParSep 0.6039604
+#> WkSep  0.3762376
+#> Sep    0.9207921
 ```

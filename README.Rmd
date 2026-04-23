@@ -68,7 +68,7 @@ res <- ELRSepTests(
 
 
 res$tStats
-res$bootRes$bootPval
+res$bootPval
 ```
 
 

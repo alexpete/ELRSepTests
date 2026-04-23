@@ -10,29 +10,35 @@
 #'            to functional data of length M1 (default is 1:M1)
 #' @param tt2 optional observation grid if the second direction of X indexes
 #'            to functional data of length M2 (default is 1:M2)
-#' @param JTest number of projections to test in the first direction, cannot be more
-#'              than M1 (default is 2)
-#' @param LTest number of projections to test in the second direction, cannot be more
-#'              than M2 (default is 2)
+#' @param JTest integer or increasing integer vector in 1:M1 indicating the first
+#'              direction eigenfunctions to test, must be the same length as LTest.
+#'              Default is 2L
+#' @param LTest integer or increasing integer vector in 1:M2 indicating the second
+#'              direction eigenfunctions to test, must be the same length as JTest.
+#'              Default is 2L
 #' @param nullHyp subset of c('ParSep', 'WkSep', 'Sep') indicating which null
 #'                  hypotheses to test (default is all)
 #' @param B number of bootstrap samples for computing P values (default is 500)
+#' @param thin logical indicator for thinning output.  If thin = FALSE, then all
+#'             output below is returned; if thin = TRUE, the default, then tStatsBoot is set to NA.
 #'
 #' @return list with the following elements
-#'         - tStats: test statistic value(s) - squared length of (studentized)
-#'                   vector of Wald statistics corresponding to specified null
-#'                   (note that these will BE NA for testing separability since
-#'                   covsep doesn't return them)
-#'         - bootRes:
-#'            * tStats: list of length B vector of bootstrap test statistics, one vector per test
-#'                      (note that these will be NA for testing separability since covsep doesn't return them)
-#'            * bootPval: bootstrap p-values, one per test
+#'         - tStats: matrix of test statistic value(s) with rows corresponding to
+#'                   different null hypotheses and columns to distinct pairs `(J, L)`
+#'                   of test dimensions in each direction. These will be NA for
+#'                   testing separability since `covsep` doesn't return them
+#'         - bootPval: bootstrap p-value matrix, with rows corresponding to null
+#'                     hypotheses and columns to distinct pairs `(J, L)`.  Will be
+#'                     NA for testing separability
+#'         - tStatsBoot: list of length equal to the different null hypotheses being
+#'                       tested. `tStatsBoot[p]` has B rows and columns corresponding
+#'                       to distinct paris `(J, L)` of test dimensions in each direction
 #' @export
 
 WaldSepTests <- function(X, tt1 = 1:dim(X)[[2]], tt2 = 1:dim(X)[[3]],
                          JTest = 2L, LTest = 2L,
                          nullHyp = c('ParSep', 'WkSep', 'Sep'),
-                         B = 500L){
+                         B = 500L, thin = TRUE){
 
   # Perform checks
 
@@ -44,135 +50,230 @@ WaldSepTests <- function(X, tt1 = 1:dim(X)[[2]], tt2 = 1:dim(X)[[3]],
     stop('Lengths of tt1 and tt2 must match second and third dimensions of X')
   }
 
-  if(JTest > M1 || LTest > M2){
-    warning('J/L cannot be larger than M1/M2 - restting to default')
-    J <- M1; L <- M2
+  if(length(JTest) != length(LTest)){
+    stop('LTest and JTest must have the same number of elements')
+  }
+
+  if(!(all(is.integer(c(JTest, LTest))) && all(c(JTest, LTest) > 0))){
+    stop('LTest and JTest must contain only positive integer values')
+  }
+
+  if(any(JTest > M1) || any(LTest > M2)){
+    stop('Some values in JTest and LTest are too large')
+  }
+
+  if(any(diff(JTest) <=0 ) || any(diff(LTest) <= 0)){
+    stop('Value in JTest and LTest must be increasing')
   }
 
   nullList <- c('ParSep', 'WkSep', 'Sep')
   tmp <- nullHyp %in% nullList
   if(!all(tmp)){
-    if(!any(tmp)){
-      warning('All provided values in nullHyp are invalid - resetting to default')
-      nullHyp <- c('ParSep', 'WkSep', 'Sep')
-    } else {
-      warning('Removing invalid elements of nullHyp')
-      nullHyp <- nullHyp[tmp]
-    }
+    stop('Some values in nullHyp are not valid')
   }
+
+  # Get lambda estimates for performing weak Wald Tests
+
+  JTestMax <- max(JTest)
+  LTestMax <- max(LTest)
+  MBE <- getMBExp(X = X, tt1 = tt1, tt2 = tt2, J = JTestMax, L = LTestMax)
+  J <- ncol(MBE$Psi)
+  L <- ncol(MBE$Phi)
+
+  if(all(JTest > J) || all(LTest > L)){
+    stop('Value in JTest and LTest are all too large as fewer components will explain over 99 percent of the variability')
+  }
+  if(JTestMax > J || LTestMax > L){
+    warning('At least one element JTest/LTest is too large after marginal basis expansions computed - removing infeasible values')
+    JTest <- JTest[JTest <= J]
+    LTest <- LTest[LTest <= L]
+    if(length(JTest) != length(LTest)){
+      JTest <- JTest[1:min(length(JTest), length(LTest))]
+      LTest <- LTest[1:min(length(JTest), length(LTest))]
+    }
+    JTest <- unique(c(JTest, J)) # add J if missing
+    LTest <- unique(c(LTest, L)) # add L if missing
+    JTestMax <- max(JTest) # should be J
+    LTestMax <- max(LTest) # should be L
+  }
+
+  Lambda <- MBE$Lambda
 
   # Set up outputs
 
   numTests <- length(nullHyp)
-  tStats <- rep(NA, numTests)
-  names(tStats) <- nullHyp
+  dimsList <- sapply(1:length(LTest), \(a) paste0('(', JTest[a], ', ', LTest[a], ')'))
+  q <- length(dimsList) # = length(JTest) and = length(LTest)
+  tStats <- matrix(NA, nrow = numTests, ncol = q)
+  rownames(tStats) <- nullHyp
+  colnames(tStats) <- dimsList
+  bootPval <- tStats
 
-  # Bootstrap results
-  bootRes <- vector(mode = "list", length = 2)
-  names(bootRes) <- c('tStats', 'bootPval')
-  bootRes$tStats <- matrix(NA, nrow = B, ncol = numTests)
-  colnames(bootRes$tStats) <- nullHyp
-  bootRes$bootPval <- rep(NA, numTests)
-  names(bootRes$bootPval) <- nullHyp
-
-  # Get lambda estimates for performing weak Wald Tests
-
-  MBE <- getMBExp(X = X, tt1 = tt1, tt2 = tt2, J = JTest, L = LTest)
-  J <- ncol(MBE$Psi)
-  L <- ncol(MBE$Phi)
-
-  if(JTest > J || LTest > L){
-    warning('At least one of JTest/LTest is too large - decreasing to largest feasible value')
-    JTest <- min(JTest, J)
-    LTest <- min(LTest, L)
+  # Bootstrap results storage
+  if(!thin){
+    tStatsBoot <- vector(mode = "list", length = numTests)
+    names(tStatsBoot) <- nullHyp
   }
-
-  Lambda <- MBE$Lambda
 
   # Run Partial Weak Tests (Lynch and Chen modification)
   doPS <- 'ParSep' %in% nullHyp
   doWS <- 'WkSep' %in% nullHyp
   doS <- 'Sep' %in% nullHyp
-
-  testCur <- 0 # tracks which null hypothesis we are doing
+  indMat <- getLambdaVecInd(JTestMax, LTestMax)
 
   if(doPS || doWS){
 
-    if(doPS){
-      lamP <- getPSlambdas(Lambda, JTest, LTest)
-      lamBootP <- matrix(NA, nrow = JTest * JTest * LTest * (LTest - 1) / 2, ncol = B)
-    }
+    lamPW <- getLambdaVec(Lambda, JTestMax, LTestMax, indMat) # partial and weak lambda values
 
-    if(doWS){
-      lamW <- getWSlambdas(Lambda, JTest, LTest)
-      lamBootW <- matrix(NA, nrow = LTest * JTest * (JTest - 1) / 2, ncol = B)
-    }
-
-    for(b in 1:B){
+    lamPWBoot <- sapply(1:B, \(b){ # partial and weak lambda values for bootstrap samples
       XBoot <- X[sample.int(n, n = n, replace = TRUE),,]
-      lam <- getMBExp(X = XBoot, tt1 = tt1, tt2 = tt2, J = JTest, L = LTest)$Lambda
-      if(doPS) lamBootP[, b] <- getPSlambdas(lam, JTest, LTest)
-      if(doWS) lamBootW[, b] <- getWSlambdas(lam, JTest, LTest)
-    }
+      MBEBoot <- getMBExp(X = XBoot, tt1 = tt1, tt2 = tt2, J = JTestMax, L = LTestMax)
+      LambdaBoot <- alignMBE(MBE, MBEBoot)$Lambda
+      return(getLambdaVec(LambdaBoot, JTestMax, LTestMax, indMat))
+    })
 
     if(doPS){
 
-      testCur <- testCur + 1
-
-      tStats[testCur] <- n * sum(lamP * lamP)
-      bootRes$tStats[, testCur] <- sapply(1:B, \(b) n * sum((drop(lamBootP[, b]) - lamP)^2))
-      bootRes$bootPval[testCur] <- (sum(bootRes$tStats[, testCur] > tStats[testCur]) + 1) / (B + 1)
-
+      jlInds <- lapply(1:q, \(jl){ # which elements do we need for JTest[jl] and LTest[jl]?
+        return(which((pmax(indMat[, 1], indMat[, 2]) <= JTest[jl]) & # j and k no bigger than JTest[jl]
+                       (pmax(indMat[, 3], indMat[, 4]) <= LTest[jl]) & #l and m no bigger than LTest[jl]
+                       (indMat[, 3] < indMat[, 4]))) # l < m keeps only values related to PS
+      })
+      tStats['ParSep', ] <- sapply(1:q, \(jl){
+        lamP <- lamPW[jlInds[[jl]]]
+        return(n * sum(lamP * lamP))
+      })
+      tStatsBootPS <- vapply(1:B, \(b){
+        val <- sapply(1:q, \(jl){
+          lamPBootDiff <- lamPWBoot[jlInds[[jl]], b] - lamPW[jlInds[[jl]]]
+          return(n * sum(lamPBootDiff * lamPBootDiff))
+        })
+        return(val)
+      }, FUN.VALUE = numeric(q))
+      tStatsBootPS <- matrix(tStatsBootPS, nrow = B, ncol = q, byrow = TRUE, dimnames = list(1:B, dimsList))
+      bootPval['ParSep', ] <- sapply(1:q, \(jl){
+        return(sum(tStatsBootPS[, jl] > tStats['ParSep', jl] + 1) / (B + 1))
+      })
+      if(!thin) tStatsBoot$ParSep <- tStatsBootPS
     }
 
     if(doWS){
 
-      testCur <- testCur + 1
-
-      tStats[testCur] <- n * sum(lamW * lamW)
-      bootRes$tStats[, testCur] <- sapply(1:B, \(b) n * sum((drop(lamBootW[, b]) - lamW)^2))
-      bootRes$bootPval[testCur] <- (sum(bootRes$tStats[, testCur] > tStats[testCur]) + 1) / (B + 1)
-
+      jlInds <- lapply(1:q, \(jl){ # which elements do we need for JTest[jl] and LTest[jl]?
+        return(which((pmax(indMat[, 1], indMat[, 2]) <= JTest[jl]) & # j and k no bigger than JTest[jl]
+                       (pmax(indMat[, 3], indMat[, 4]) <= LTest[jl]) & #l and m no bigger than LTest[jl]
+                       (indMat[, 3] == indMat[, 4]))) # l = m keeps only values related to WS
+      })
+      tStats['WkSep', ] <- sapply(1:q, \(jl){
+        lamW <- lamPW[jlInds[[jl]]]
+        return(n * sum(lamW * lamW))
+      })
+      tStatsBootWS <- vapply(1:B, \(b){
+        val <- sapply(1:q, \(jl){
+          lamWBootDiff <- lamPWBoot[jlInds[[jl]], b] - lamPW[jlInds[[jl]]]
+          return(n * sum(lamWBootDiff * lamWBootDiff))
+        })
+        return(val)
+      }, FUN.VALUE = numeric(q))
+      tStatsBootWS <- matrix(tStatsBootWS, nrow = B, ncol = q, byrow = TRUE, dimnames = list(1:B, dimsList))
+      bootPval['WkSep', ] <- sapply(1:q, \(jl){
+        return(sum(tStatsBootWS[, jl] > tStats['WkSep', jl] + 1) / (B + 1))
+      })
+      if(!thin) tStatsBoot$WkSep <- tStatsBootWS
     }
   }
 
   if(doS){
 
-    testCur <- testCur + 1
-
-    sepTest <- covsep::empirical_bootstrap_test(Data = X, L1 = JTest, L2 = LTest,
-                                                  studentize = 'full', B = B, verbose = FALSE)
-    bootRes$bootPval[testCur] <- sepTest
+    bootPval['Sep', ] <- covsep::empirical_bootstrap_test(Data = X, L1 = JTest, L2 = LTest,
+                                                                    studentize = 'full', B = B, verbose = FALSE)
+    if(!thin) tStatsBoot$Sep <- "NA - Bootstrap Statistics are not returned by covsep functions"
   }
 
-  return(list('tStats' = tStats, 'bootRes' = bootRes))
+  res <- list(tStats = tStats, bootPval = bootPval)
+  if(!thin) res$tStatsBoot <- tStatsBoot
+  return(res)
 }
 
 
-## helper functions to extract elements of Lambda corresponding to Partial/Weak Separability
+## helper function to extract elements of Lambda corresponding to Partial/Weak Separability
 
-getPSlambdas <- function(Lambda, J, L){
+getLambdaVecInd <- function(J, L) {
 
-  v <- lapply(1:(L - 1L), function(l){
-    u <- lapply((l + 1L):L, function(m){
-      w <- Lambda[((l - 1L) * J + 1L):(l * J),((m - 1L) * J + 1L):(m * J)]
-      return(c(t(w)))
-    })
-    return(u)
-  })
+  indList <- list()
 
-  return(unlist(v, use.names = FALSE))
+  ## 1. Terms with l < m, ordered by l, then m, then j, then k
+  if (L >= 2L) {
+    ctr <- 1L
+    for (l in 1:(L - 1L)) {
+      for (m in (l + 1L):L) {
+        for (j in 1:J) {
+          for (k in 1:J) {
+            indList[[ctr]] <- c(j = j, k = k, l = l, m = m)
+            ctr <- ctr + 1L
+          }
+        }
+      }
+    }
+  } else {
+    ctr <- 1L
+  }
 
+  ## 2. Terms with l = m and j < k, ordered by l, then j, then k
+  if (J >= 2L) {
+    for (l in 1:L) {
+      for (j in 1:(J - 1L)) {
+        for (k in (j + 1L):J) {
+          indList[[ctr]] <- c(j = j, k = k, l = l, m = l)
+          ctr <- ctr + 1L
+        }
+      }
+    }
+  }
+
+  if (length(indList) == 0L) {
+    indMat <- matrix(integer(0), nrow = 0L, ncol = 4L)
+    colnames(indMat) <- c("j", "k", "l", "m")
+    return(indMat)
+  }
+
+  indMat <- do.call(rbind, indList)
+  storage.mode(indMat) <- "integer"
+  indMat
 }
 
-getWSlambdas <- function(Lambda, J, L){
+getLambdaVec <- function(Lambda, J, L, indMat = NULL) {
 
-  v <- lapply(1:L, function(l){
-    ind <- ((l - 1L) * J + 1L):(l * J)
-    u <- Lambda[ind, ind, drop = FALSE]
-    u[row(u) < col(u)]
-  })
+  if (is.null(indMat)) {
+    indMat <- getLambdaVecInd(J, L)
+  }
 
-  return(unlist(v, use.names = FALSE))
+  if (nrow(indMat) == 0L) {
+    return(numeric(0))
+  }
 
+  rowInd <- (indMat[, "l"] - 1L) * J + indMat[, "j"]
+  colInd <- (indMat[, "m"] - 1L) * J + indMat[, "k"]
+
+  Lambda[cbind(rowInd, colInd)]
+}
+
+alignMBE <- function(MBE, MBEBoot){ # align MBEBoot with MBE
+  JBoot <- ncol(MBEBoot$Psi)
+  LBoot <- ncol(MBEBoot$Phi)
+
+  flipSignj <- diag(crossprod(MBE$Psi[, 1:JBoot], MBEBoot$Psi)) < 0
+  flipSignl <- diag(crossprod(MBE$Phi[, 1:LBoot], MBEBoot$Phi)) < 0
+
+  MBEBoot$Psi <- t(t(MBEBoot$Psi) * ifelse(flipSignj, -1, 1))
+  MBEBoot$Phi <- t(t(MBEBoot$Phi) * ifelse(flipSignl, -1, 1))
+
+  s <- unlist(lapply(1:LBoot, function(l) {
+    ifelse(xor(flipSignj, flipSignl[l]), -1, 1)
+  }))
+
+  MBEBoot$Lambda <- MBEBoot$Lambda * (s %o% s)
+  MBEBoot$scrs <- sweep(MBEBoot$scrs, 2, s, `*`)
+
+  return(MBEBoot)
 }

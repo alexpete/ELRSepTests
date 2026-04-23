@@ -14,7 +14,8 @@ ELRSepTests(
   B = 500L,
   LSmax = 100L,
   ELctrl = melt::el_control(maxit = 10000L, maxit_l = 1000L),
-  FVEthres = 0.99
+  FVEthres = 0.99,
+  thin = TRUE
 )
 }
 \arguments{
@@ -28,11 +29,13 @@ to functional data of length M1 (default is 1:M1)}
 \item{tt2}{optional observation grid if the second direction of X indexes
 to functional data of length M2 (default is 1:M2)}
 
-\item{JTest}{number of projections to test in the first direction, cannot be more
-than M1 (default is 2)}
+\item{JTest}{integer or increasing integer vector in 1:M1 indicating the first
+direction eigenfunctions to test, must be the same length as LTest.
+Default is 2L}
 
-\item{LTest}{number of projections to test in the second direction, cannot be more
-than M2 (default is 2)}
+\item{LTest}{integer or increasing integer vector in 1:M2 indicating the second
+direction eigenfunctions to test, must be the same length as JTest.
+Default is 2L}
 
 \item{nullHyp}{subset of c('ParSep', 'WkSep', 'Sep') indicating which null
 hypotheses to test (default is all)}
@@ -47,21 +50,28 @@ see el_control (default is el_control(maxit = 10000L, maxit_l = 100L))}
 
 \item{FVEthres}{threshold to determine number of basis functions to use when drawing
 bootstrap samples that are similar to the observed data (default is 0.99)}
+
+\item{thin}{logical indicator for thinning output.  If thin = FALSE, then all
+output below is returned; if thin = TRUE, the default, then tStatsBoot is set to NA.}
 }
 \value{
 list with the following elements
-- tStats: test statistic value(s) - minus twice the constrained empirical log-likelihood ratio
-corresponding to specified null and alternative
-- loglr - log empirical likelihood ratio value for each type of separability
-- ELoptInfo: EL optimization information for each test (see optim slot from fitted ELT object).
-For testing weak separability and separability, there is information for both the
-constrained null fit and specific alternative
-- bootRes: bootstrap calibration info list (if cal = 'bootstrap', otherwise is NA)
-* tStats: list of length B vector of bootstrap test statistics, one vector per test
-* loglr: list of length B, each giving the log empirical likelihood ratio for each type of separability
-* ELoptInfo: list of lists EL optimization information for each bootstrap, same structure as
-ELoptInfo above for each element
-* bootPval: bootstrap p-values, one per test
+- tStats: matrix of empirical likelihood test statistic values, with
+rows corresponding to different null hypotheses and columns
+to distinct pairs \verb{(J, L)}
+- ELoptInfo: List of EL optimization information for each type of separability
+that corresponds to a null or alternative according to nullHyp.
+See optim slot from fitted ELT object for details.
+Each element itself is a list corresponding to information
+for fitting a given type of separability with secondary index
+corresponding to distinct pairs \verb{(J, L)}.
+- bootPval: matrix of bootstrap p-values, with different null hypotheses
+indexing the rows and distinct pairs \verb{(J, L)} indexing columns
+- tStatsBoot: list of bootstrap test statistics, \code{tStatsBoot[[a]]} is a matrix
+of bootstrap test statistics for the corresponding null
+hypothesis with rows indexed by bootstrap samples and
+columns indexed by distinct pairs \verb{(J, L)}. Set to NA if
+thin = TRUE
 }
 \description{
 Empirical likleihood ratio tests for nested separability structures using null-transformed bootstrap calibration

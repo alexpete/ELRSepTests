@@ -13,15 +13,17 @@ getELTestData(scrs, J, L, JTest = J, LTest = L)
 
 \item{L}{number of second direction basis elements used in the expansion}
 
-\item{JTest}{number of first direction basis elements to include in test data}
+\item{JTest}{integer indicating how many first direction scores to consider
+when forming products. Can be at most \code{J}, with \code{J} being the default}
 
-\item{LTest}{number of second direction basis elements to include in test data}
+\item{LTest}{integer indicating how many second direction scores to consider
+when forming products. Can be at most \code{L}, with \code{L} being the default}
 }
 \value{
 matrix of augmented data with columns organized as follows:
-cross-products for different direction 2 bases - LTest(LTest - 1)JTest^2/2 columns for ParSep
-cross-products for different direction 1 bases but direction 2 basis - JTest(JTest - 1)LTest/2 columns for WkSep
-squares - LTest*JTest columns for Sep
+cross-products for different direction 2 bases - \code{LTest * (LTest - 1) * JTest^2 / 2} columns for ParSep
+cross-products for different direction 1 bases but same direction 2 basis - \code{JTest * (JTest - 1) * LTest / 2} columns for WkSep
+squares - \code{LTest * JTest} columns for Sep
 }
 \description{
 Compute and arrange products of marginal tensor basis scores for use in ELR tests

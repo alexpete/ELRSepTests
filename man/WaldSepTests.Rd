@@ -11,7 +11,8 @@ WaldSepTests(
   JTest = 2L,
   LTest = 2L,
   nullHyp = c("ParSep", "WkSep", "Sep"),
-  B = 500L
+  B = 500L,
+  thin = TRUE
 )
 }
 \arguments{
@@ -25,27 +26,34 @@ to functional data of length M1 (default is 1:M1)}
 \item{tt2}{optional observation grid if the second direction of X indexes
 to functional data of length M2 (default is 1:M2)}
 
-\item{JTest}{number of projections to test in the first direction, cannot be more
-than M1 (default is 2)}
+\item{JTest}{integer or increasing integer vector in 1:M1 indicating the first
+direction eigenfunctions to test, must be the same length as LTest.
+Default is 2L}
 
-\item{LTest}{number of projections to test in the second direction, cannot be more
-than M2 (default is 2)}
+\item{LTest}{integer or increasing integer vector in 1:M2 indicating the second
+direction eigenfunctions to test, must be the same length as JTest.
+Default is 2L}
 
 \item{nullHyp}{subset of c('ParSep', 'WkSep', 'Sep') indicating which null
 hypotheses to test (default is all)}
 
 \item{B}{number of bootstrap samples for computing P values (default is 500)}
+
+\item{thin}{logical indicator for thinning output.  If thin = FALSE, then all
+output below is returned; if thin = TRUE, the default, then tStatsBoot is set to NA.}
 }
 \value{
 list with the following elements
-- tStats: test statistic value(s) - squared length of (studentized)
-vector of Wald statistics corresponding to specified null
-(note that these will BE NA for testing separability since
-covsep doesn't return them)
-- bootRes:
-* tStats: list of length B vector of bootstrap test statistics, one vector per test
-(note that these will be NA for testing separability since covsep doesn't return them)
-* bootPval: bootstrap p-values, one per test
+- tStats: matrix of test statistic value(s) with rows corresponding to
+different null hypotheses and columns to distinct pairs \verb{(J, L)}
+of test dimensions in each direction. These will be NA for
+testing separability since \code{covsep} doesn't return them
+- bootPval: bootstrap p-value matrix, with rows corresponding to null
+hypotheses and columns to distinct pairs \verb{(J, L)}.  Will be
+NA for testing separability
+- tStatsBoot: list of length equal to the different null hypotheses being
+tested. \code{tStatsBoot[p]} has B rows and columns corresponding
+to distinct paris \verb{(J, L)} of test dimensions in each direction
 }
 \description{
 Wald tests of Aston et al. (full studentization) and Lynch and Chen (no studentization)

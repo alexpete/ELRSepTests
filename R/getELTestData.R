@@ -3,13 +3,16 @@
 #' @param scrs n-by-JL matrix of scores in marginal tensor product basis
 #' @param J number of first direction basis elements used in the expansion
 #' @param L number of second direction basis elements used in the expansion
-#' @param JTest number of first direction basis elements to include in test data
-#' @param LTest number of second direction basis elements to include in test data
+#' @param JTest integer indicating how many first direction scores to consider
+#'              when forming products. Can be at most `J`, with `J` being the default
+#' @param LTest integer indicating how many second direction scores to consider
+#'              when forming products. Can be at most `L`, with `L` being the default
+#'
 #'
 #' @return matrix of augmented data with columns organized as follows:
-#'          cross-products for different direction 2 bases - LTest(LTest - 1)JTest^2/2 columns for ParSep
-#'          cross-products for different direction 1 bases but direction 2 basis - JTest(JTest - 1)LTest/2 columns for WkSep
-#'          squares - LTest*JTest columns for Sep
+#'          cross-products for different direction 2 bases - `LTest * (LTest - 1) * JTest^2 / 2` columns for ParSep
+#'          cross-products for different direction 1 bases but same direction 2 basis - `JTest * (JTest - 1) * LTest / 2` columns for WkSep
+#'          squares - `LTest * JTest` columns for Sep
 #'
 
 getELTestData <- function(scrs, J, L, JTest = J, LTest = L) {
@@ -18,7 +21,7 @@ getELTestData <- function(scrs, J, L, JTest = J, LTest = L) {
     stop('Provided values for J and L do not correspond to the number of columns in scrs')
   }
 
-  if(J < JTest || L < LTest){
+  if(JTest > J || LTest > L){
     stop('JTest and LTest can be at most J and L, respectively')
   }
 
@@ -32,8 +35,7 @@ getELTestData <- function(scrs, J, L, JTest = J, LTest = L) {
   A <- getIndSets(JTest, LTest)
   scrsAug <- scrs[, A$A1, drop = FALSE] * scrs[, A$A2, drop = FALSE]
 
-
-  return(scrsAug)
+  return(scrsAug = scrsAug)
 
 }
 

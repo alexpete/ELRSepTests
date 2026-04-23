@@ -80,6 +80,8 @@ getMBExp <- function(X, tt1 = 1:dim(X)[[2]], tt2 = 1:dim(X)[[3]], J = length(tt1
   if(any(c(d1, d2) != 1)){
     W <- tcrossprod(sqrt(w1), sqrt(w2))
     Y <- Xc * aperm(array(W, dim = c(M1, M2, n)), c(3, 1, 2))
+  } else {
+    Y <- Xc
   }
 
   ## Get the partial eigendecompositions

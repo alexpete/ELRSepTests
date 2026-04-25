@@ -17,9 +17,9 @@
 #'          to find L eigenvalues, but will only retain those that are positive.
 #'          Default is M2, but this will almost always be too many.
 #' @param useFVE logical indicating whether or not to use cumulative FVEs to determine
-#'               J and L.  If true, the values of J and L that achieve at
-#'               least 1 - (1 - FVEthres)/2 are computed, and the provided values
-#'               of J and L are ignored (default is FALSE)
+#'               J and L.  If true, the values of `JFVE` and `LFVE` that achieve at
+#'               least 1 - (1 - FVEthres)/2 are computed, and the number of eigenvalues
+#'               extracted are `Jext = max(J, JFVE)` and `Lext = max(L, LFVE)` (default is FALSE)
 #' @param FVEthres threshold for overall FVE required (default is 0.99)
 #'
 #' @return list with five elements
@@ -94,11 +94,15 @@ getMBExp <- function(X, tt1 = 1:dim(X)[[2]], tt2 = 1:dim(X)[[3]], J = length(tt1
 
   if(useFVE){
     th <- 1 - (1 - FVEthres)/2
-    J <- min(which(cumFVE[[1]] > th))
-    L <- min(which(cumFVE[[2]] > th))
+    JFVE <- min(which(cumFVE[[1]] > th))
+    LFVE <- min(which(cumFVE[[2]] > th))
+    J <- min(max(J, JFVE), length(cumFVE$Dim1)) # smaller of max(J, JFVE) and number of positive eigenvalues
+    L <- min(max(L, LFVE), length(cumFVE$Dim2)) # smaller of max(L, LFVE) and number of positive eigenvalues
+  } else {
+    J <- min(J, length(cumFVE$Dim1)) # smaller of J and number of positive eigenvalues
+    L <- min(L, length(cumFVE$Dim2)) # smaller of L and number of positive eigenvalues
   }
 
-  J <- min(J, length(cumFVE$Dim1)); L <- min(L, length(cumFVE$Dim2))
 
   ## Get eigenvectors
   Psi <- KerMerc[[1]]$vectors[, 1:J]

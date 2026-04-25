@@ -81,7 +81,7 @@ WaldSepTests <- function(X, tt1 = 1:dim(X)[[2]], tt2 = 1:dim(X)[[3]],
   L <- ncol(MBE$Phi)
 
   if(all(JTest > J) || all(LTest > L)){
-    stop('Value in JTest and LTest are all too large as fewer components will explain over 99 percent of the variability')
+    stop('Value in JTest and LTest are all too large as they all involve negative empirical eigenvalues')
   }
   if(JTestMax > J || LTestMax > L){
     warning('At least one element JTest/LTest is too large after marginal basis expansions computed - removing infeasible values')

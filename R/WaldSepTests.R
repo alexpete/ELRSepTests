@@ -10,10 +10,10 @@
 #'            to functional data of length M1 (default is 1:M1)
 #' @param tt2 optional observation grid if the second direction of X indexes
 #'            to functional data of length M2 (default is 1:M2)
-#' @param JTest integer or increasing integer vector in 1:M1 indicating the first
+#' @param JTest integer or nondecreasing integer vector in 1:M1 indicating the first
 #'              direction eigenfunctions to test, must be the same length as LTest.
 #'              Default is 2L
-#' @param LTest integer or increasing integer vector in 1:M2 indicating the second
+#' @param LTest integer or nondecreasing integer vector in 1:M2 indicating the second
 #'              direction eigenfunctions to test, must be the same length as JTest.
 #'              Default is 2L
 #' @param nullHyp subset of c('ParSep', 'WkSep', 'Sep') indicating which null
@@ -62,8 +62,8 @@ WaldSepTests <- function(X, tt1 = 1:dim(X)[[2]], tt2 = 1:dim(X)[[3]],
     stop('Some values in JTest and LTest are too large')
   }
 
-  if(any(diff(JTest) <=0 ) || any(diff(LTest) <= 0)){
-    stop('Value in JTest and LTest must be increasing')
+  if(any(diff(JTest) <0 ) || any(diff(LTest) < 0)){
+    stop('Value in JTest and LTest must be nondecreasing')
   }
 
   nullList <- c('ParSep', 'WkSep', 'Sep')

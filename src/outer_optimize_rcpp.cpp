@@ -88,6 +88,7 @@ List outer_optimize_rcpp(const arma::mat& scrsAug,
   Rcpp::Function el_mean    = melt_ns["el_mean"];
 
   const std::size_t p = scrsAug.n_cols;
+  const double nObs = static_cast<double>(scrsAug.n_rows);
   const double epsSimplex = 1e-12;
   const double epsAlpha = 1e-12;
   const int convNeedStep = 5;
@@ -98,7 +99,7 @@ List outer_optimize_rcpp(const arma::mat& scrsAug,
   // Convergence tolerances
   const double tolObjWin = 10.0 * tolOtr;      // rolling objective-change tolerance
   const double tolGradStrict = tolOtr;         // strict gradient threshold
-  const double tolGradObj = 1e4 * tolOtr;   // looser gradient threshold for obj-based stop
+  const double tolGradObj = 500.0 * tolOtr;   // looser gradient threshold for obj-based stop
   const double tolStep = 10.0 * tolOtr;        // step stagnation tolerance
 
   // Initial state (force interior for mirror descent and positivity for alpha)
@@ -112,7 +113,7 @@ List outer_optimize_rcpp(const arma::mat& scrsAug,
   vec thetaSCur = aCur * kron_vec(betaCur, gammaCur);
   rowvec d0 = make_shift_row(p, numParsS, thetaSCur);
   Rcpp::S4 elCur = el_mean(_["x"] = scrsAug, _["par"] = d0, _["control"] = ctrl);
-  double logLikCur = as<double>(elCur.slot("logl"));
+  double logLikCur = as<double>(elCur.slot("logl")) / nObs;
   List optimCur = elCur.slot("optim");
   vec lambdaCur = as<vec>(optimCur["lambda"]);
   vec lambdaSepCur = subvec_by_R_index(lambdaCur, SepInd);
@@ -141,9 +142,9 @@ List outer_optimize_rcpp(const arma::mat& scrsAug,
     mat K_gamma = kron(betaCur.t(), eye(JTest, JTest));
     mat K_beta = kron(eye(LTest, LTest), gammaCur.t());
 
-    vec gradGamma = aCur * (K_gamma * lambdaSepCur);                 // ascent gradient wrt gamma
-    vec gradBeta  = aCur * (K_beta  * lambdaSepCur);                 // ascent gradient wrt beta
-    double gradA  = as_scalar(kron_vec(betaCur, gammaCur).t() * lambdaSepCur); // ascent grad wrt alpha
+    vec gradGamma = aCur * (K_gamma * lambdaSepCur) / nObs;                 // ascent gradient wrt gamma
+    vec gradBeta  = aCur * (K_beta  * lambdaSepCur) / nObs;                 // ascent gradient wrt beta
+    double gradA  = as_scalar(kron_vec(betaCur, gammaCur).t() * lambdaSepCur) / nObs; // ascent grad wrt alpha
     double gradZ  = aCur * gradA;                                    // chain rule: a = exp(z)
 
     double gradGammaRes = simplex_grad_resid_inf(gradGamma);
@@ -177,7 +178,7 @@ List outer_optimize_rcpp(const arma::mat& scrsAug,
 
       Rcpp::S4 ctrlLS = el_control(_["maxit_l"] = mInr, _["tol_l"] = tolInr);
       Rcpp::S4 elTmp = el_mean(_["x"] = scrsAug, _["par"] = d, _["control"] = ctrlLS);
-      double logl = as<double>(elTmp.slot("logl"));
+      double logl = as<double>(elTmp.slot("logl")) / nObs;
 
       if (logl > logLikCur) {
         accepted = true;

@@ -18,6 +18,9 @@
 #' @param nullHyp subset of c('ParSep', 'WkSep', 'Sep') indicating which null
 #'                  hypotheses to test (default is all)
 #' @param B number of bootstrap samples for computing P values (default is 500)
+#' @param mnBoot integer no larger than n giving the size of bootstrap samples
+#'               to be drawn - an m-out-of-n bootstrap.  Default is `mnBoot = n`
+#'               for a full bootstrap
 #' @param LSmax for finding the MELE under separability, the maximum number of line
 #'                search steps to take (default = 100L)
 #' @param ELctrl an object of class ControlEL defining options for EL estimation;
@@ -46,10 +49,10 @@
 #'                      thin = TRUE
 #' @export
 
-ELRSepTests <- function(X, tt1 = 1:dim(X)[[2]], tt2 = 1:dim(X)[[3]],
+ELRSepTests <- function(X, tt1 = 1:dim(X)[2], tt2 = 1:dim(X)[3],
                         JTest = 2L, LTest = 2L,
                         nullHyp = c('ParSep', 'WkSep', 'Sep'),
-                        B = 500L, LSmax = 100L,
+                        B = 500L, mnBoot = dim(X)[1], LSmax = 100L,
                         ELctrl = melt::el_control(maxit = 10000L, maxit_l = 1000L),
                         FVEthres = 0.99,
                         thin = TRUE){
@@ -58,11 +61,13 @@ ELRSepTests <- function(X, tt1 = 1:dim(X)[[2]], tt2 = 1:dim(X)[[3]],
 
   if(!is.array(X) || length(dim(X)) != 3) stop('X must be a 3D array')
 
-  n <- dim(X)[[1]]; M1 <- dim(X)[[2]]; M2 <- dim(X)[[3]]
+  n <- dim(X)[1]; M1 <- dim(X)[2]; M2 <- dim(X)[3]
 
   if(length(tt1) != M1 || length(tt2) != M2){
     stop('Lengths of tt1 and tt2 must match second and third dimensions of X')
   }
+
+  if(mnBoot > n) stop('mnBoot cannot be larger than n')
 
   if(length(JTest) != length(LTest)){
     stop('LTest and JTest must have the same number of elements')
@@ -157,7 +162,7 @@ ELRSepTests <- function(X, tt1 = 1:dim(X)[[2]], tt2 = 1:dim(X)[[3]],
         JTestMaxBoot <- max(JTest[convInd])
         LTestMaxBoot <- max(LTest[convInd])
 
-        Xboot <- drawBoot(MBE, 'ParSep') # Null bootstrap under ParSep
+        Xboot <- drawBoot(MBE, 'ParSep', mnBoot) # Null bootstrap under ParSep
         MBEboot <- getMBExp(Xboot, tt1 = tt1, tt2 = tt2, J = JTestMaxBoot, L = LTestMaxBoot)
 
         scrsAugBoot <- getELTestData(MBEboot$scrs, J = JTestMaxBoot, L = LTestMaxBoot)
@@ -188,7 +193,7 @@ ELRSepTests <- function(X, tt1 = 1:dim(X)[[2]], tt2 = 1:dim(X)[[3]],
         JTestMaxBoot <- max(JTest[convInd])
         LTestMaxBoot <- max(LTest[convInd])
 
-        Xboot <- drawBoot(MBE, 'WkSep') # Null bootstrap under WkSep
+        Xboot <- drawBoot(MBE, 'WkSep', mnBoot) # Null bootstrap under WkSep
         MBEboot <- getMBExp(Xboot, tt1 = tt1, tt2 = tt2, J = JTestMaxBoot, L = LTestMaxBoot)
 
         scrsAugBoot <- getELTestData(MBEboot$scrs, J = JTestMaxBoot, L = LTestMaxBoot)
@@ -219,7 +224,7 @@ ELRSepTests <- function(X, tt1 = 1:dim(X)[[2]], tt2 = 1:dim(X)[[3]],
         convInd <- which(conv$Sep)
         JTestMaxBoot <- max(JTest[convInd])
         LTestMaxBoot <- max(LTest[convInd])
-        Xboot <- drawBoot(MBE, 'Sep') # Null bootstrap under Sep
+        Xboot <- drawBoot(MBE, 'Sep', mnBoot) # Null bootstrap under Sep
         MBEboot <- getMBExp(Xboot, tt1 = tt1, tt2 = tt2, J = JTestMaxBoot, L = LTestMaxBoot)
 
         scrsAugBoot <- getELTestData(MBEboot$scrs, J = JTestMaxBoot, L = LTestMaxBoot)
@@ -258,66 +263,89 @@ getELFits <- function(scrsAug, nullHyp, JTest, LTest, scrsInd, ELctrl, LSmax){
   names(ELoptInfo) <- names(conv) <- fitHyp
 
   if('ParSep' %in% fitHyp){
-    ELFitsPS <- lapply(1:q, \(jl){ # fit EL for each (J, L)
-      jlInds <- which((pmax(scrsInd[, 1], scrsInd[, 2]) <= JTest[jl]) & # j and k no bigger than JTest[jl]
-                       (pmax(scrsInd[, 3], scrsInd[, 4]) <= LTest[jl]) & # l and m no bigger than LTest[jl]
-                       (scrsInd[, 3] < scrsInd[, 4])) # l < m keeps only values related to PS
-      scrsAugCur <- scrsAug[, jlInds] # extract relevant columns
-      return(melt::el_mean(scrsAugCur, rep(0, ncol(scrsAugCur)), control = ELctrl))
-    })
-    conv$ParSep <- sapply(ELFitsPS, \(el) el@optim$convergence)
-    ELstats['ParSep', ] <- sapply(1:q, \(jl) ifelse(conv$ParSep[jl], ELFitsPS[[jl]]@statistic, Inf))
-    ELoptInfo$ParSep <- lapply(ELFitsPS, \(el) el@optim)
+    runEL <- TRUE
+    for(jl in 1:q){ # fit EL for each (J, L)
+      if(runEL){
+        jlInds <- which((pmax(scrsInd[, 1], scrsInd[, 2]) <= JTest[jl]) & # j and k no bigger than JTest[jl]
+                          (pmax(scrsInd[, 3], scrsInd[, 4]) <= LTest[jl]) & # l and m no bigger than LTest[jl]
+                          (scrsInd[, 3] < scrsInd[, 4])) # l < m keeps only values related to PS
+        scrsAugCur <- scrsAug[, jlInds] # extract relevant columns
+        ELFitPS <- melt::el_mean(scrsAugCur, rep(0, ncol(scrsAugCur)), control = ELctrl)
+        conv$ParSep[jl] <- ELFitPS@optim$convergence
+        ELstats['ParSep', jl] <- ifelse(conv$ParSep[jl], ELFitPS@statistic, Inf)
+        ELoptInfo$ParSep[[jl]] <- ELFitPS@optim
+        runEL <- conv$ParSep[jl] # don't run for larger index values if convergence failed
+      } else {
+        conv$ParSep[jl] <- FALSE
+        ELstats['ParSep', jl] <- Inf
+        ELoptInfo$ParSep[[jl]] <- NA
+      }
+    }
   }
 
   if('WkSep' %in% fitHyp){
-    ELFitsWS <- lapply(1:q, \(jl){ # fit EL for each (J, L)
-      jlInds <- which((pmax(scrsInd[, 1], scrsInd[, 2]) <= JTest[jl]) & # j and k no bigger than JTest[jl]
-                       (pmax(scrsInd[, 3], scrsInd[, 4]) <= LTest[jl]) & # l and m no bigger than LTest[jl]
-                       (((scrsInd[, 3] < scrsInd[, 4])) | # all (j, k) are valid if l < m
-                          ((scrsInd[, 3] == scrsInd[, 4]) & scrsInd[, 1] < scrsInd[, 2]))) # j < k if l = m
-      scrsAugCur <- scrsAug[, jlInds] # extract relevant columns
-      return(melt::el_mean(scrsAugCur, rep(0, ncol(scrsAugCur)), control = ELctrl))
-    })
-    conv$WkSep <- sapply(ELFitsWS, \(el) el@optim$convergence)
-    ELstats['WkSep', ] <- sapply(1:q, \(jl) ifelse(conv$WkSep[jl], ELFitsWS[[jl]]@statistic, Inf))
-    ELoptInfo$WkSep <- lapply(ELFitsWS, \(el) el@optim)
+    runEL <- TRUE
+    if('Sep' %in% fitHyp) logpWS <- vector("list", q) # store logp if needed later for Sep fits
+    for(jl in 1:q){ # fit EL for each (J, L)
+      if('ParSep' %in% fitHyp) runEL <- runEL && conv$ParSep[jl] # don't run WkSep if ParSep didn't converge
+      if(runEL){
+        jlInds <- which((pmax(scrsInd[, 1], scrsInd[, 2]) <= JTest[jl]) & # j and k no bigger than JTest[jl]
+                         (pmax(scrsInd[, 3], scrsInd[, 4]) <= LTest[jl]) & # l and m no bigger than LTest[jl]
+                         (((scrsInd[, 3] < scrsInd[, 4])) | # all (j, k) are valid if l < m
+                            ((scrsInd[, 3] == scrsInd[, 4]) & scrsInd[, 1] < scrsInd[, 2]))) # j < k if l = m
+        scrsAugCur <- scrsAug[, jlInds] # extract relevant columns
+        ELFitWS <- melt::el_mean(scrsAugCur, rep(0, ncol(scrsAugCur)), control = ELctrl)
+        conv$WkSep[jl] <- ELFitWS@optim$convergence
+        ELstats['WkSep', jl] <- ifelse(conv$WkSep[jl], ELFitWS@statistic, Inf)
+        ELoptInfo$WkSep[[jl]] <- ELFitWS@optim
+        if('Sep' %in% fitHyp){
+          if(conv$WkSep[jl]){
+            logpWS[[jl]] <- ELFitWS@logp
+          } else {
+            logpWS[[jl]] <- NA
+          }
+        }
+        runEL <- conv$WkSep[jl]
+      } else {
+        conv$WkSep[jl] <- FALSE
+        ELstats['WkSep', jl] <- Inf
+        ELoptInfo$WkSep[[jl]] <- NA
+        if('Sep' %in% fitHyp) logpWS[[jl]] <- NA
+      }
+    }
   }
 
   if('Sep' %in% fitHyp){
+    runEL <- TRUE
+    for(jl in 1:q){ # fit EL for each (J, L)
+      runEL <- runEL && conv$WkSep[jl] # don't run Sep if WkSep didn't converge
+      if(runEL){
+        jlInds <- which((pmax(scrsInd[, 1], scrsInd[, 2]) <= JTest[jl]) & # j and k no bigger than JTest[jl]
+                         (pmax(scrsInd[, 3], scrsInd[, 4]) <= LTest[jl])) # l and m no bigger than LTest[jl]
+        scrsAugCur <- scrsAug[, jlInds] # extract relevant columns
+        SepInds <- (ncol(scrsAugCur) - JTest[jl] * LTest[jl] + 1):ncol(scrsAugCur) # last columns are for Sep
 
-    ELFitsS <- lapply(1:q, \(jl){
-      jlInds <- which((pmax(scrsInd[, 1], scrsInd[, 2]) <= JTest[jl]) & # j and k no bigger than JTest[jl]
-                       (pmax(scrsInd[, 3], scrsInd[, 4]) <= LTest[jl])) # l and m no bigger than LTest[jl]
-      scrsAugCur <- scrsAug[, jlInds] # extract relevant columns
-      SepInds <- (ncol(scrsAugCur) - JTest[jl] * LTest[jl] + 1):ncol(scrsAugCur) # last columns are for Sep
+        w <- expm1(logpWS[[jl]]) + 1
+        tmp <- matrix(colSums(scrsAugCur[, SepInds] * w), nrow = JTest[jl], ncol = LTest[jl])
+        aStrt <- sum(tmp) # trace of estimated Lambda matrix under weak separability
+        gammaStrt <- rowSums(tmp)/aStrt
+        betaStrt <- colSums(tmp)/aStrt
 
-      if(conv$WkSep[jl]){
-        w <- expm1(ELFitsWS[[jl]]@logp) + 1
+        ELFitS <- SepELOpt(scrsAugCur, JTest[jl], LTest[jl], gammaStrt, betaStrt, aStrt,
+                        mOtr = ELctrl@maxit, mInr = ELctrl@maxit_l,
+                        tolOtr = ELctrl@tol, tolInr = ELctrl@tol_l,
+                        LSmax = LSmax, verb = ELctrl@verbose)
+        conv$Sep[jl] <- ifelse(length(ELFitS@optim$convergence) == 1, # constrained optimization not performed because initial point has likelihood 0
+                               FALSE, ELFitS@optim$convergence$FinalInr)
+        ELstats['Sep', jl] <- ifelse(conv$Sep[jl], ELFitS@statistic, Inf)
+        ELoptInfo$Sep[[jl]] <- ELFitS@optim
+        runEL <- conv$Sep[jl]
       } else {
-        w <- rep(1/ncol(scrsAugCur), length.out = ncol(scrsAugCur))
+        conv$Sep[jl] <- FALSE
+        ELstats['Sep', jl] <- Inf
+        ELoptInfo$Sep[[jl]] <- NA
       }
-      tmp <- matrix(colSums(scrsAugCur[, SepInds] * w), nrow = JTest[jl], ncol = LTest[jl])
-      aStrt <- sum(tmp) # trace of estimated Lambda matrix under weak separability
-      gammaStrt <- rowSums(tmp)/aStrt
-      betaStrt <- colSums(tmp)/aStrt
-
-      return(SepELOpt(scrsAugCur, JTest[jl], LTest[jl], gammaStrt, betaStrt, aStrt,
-                      mOtr = ELctrl@maxit, mInr = ELctrl@maxit_l,
-                      tolOtr = ELctrl@tol, tolInr = ELctrl@tol_l,
-                      LSmax = LSmax, verb = ELctrl@verbose))
-    })
-
-    conv$Sep <- sapply(ELFitsS, \(el){
-      if(length(el@optim$convergence) == 1){ # constrained optimization not performed because initial point has likelihood 0
-        return(FALSE)
-      } else {
-      return(el@optim$convergence$FinalInr)
-      }
-    })
-    ELstats['Sep', ] <- sapply(1:q, \(jl) ifelse(conv$Sep[jl], ELFitsS[[jl]]@statistic, Inf))
-    ELoptInfo$Sep <- lapply(ELFitsS, \(el) el@optim)
-
+    }
   }
 
   return(list(ELstats = ELstats, conv = conv, ELoptInfo = ELoptInfo))

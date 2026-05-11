@@ -26,11 +26,11 @@ to functional data of length M1 (default is 1:M1)}
 \item{tt2}{optional observation grid if the second direction of X indexes
 to functional data of length M2 (default is 1:M2)}
 
-\item{JTest}{integer or increasing integer vector in 1:M1 indicating the first
+\item{JTest}{integer or nondecreasing integer vector in 1:M1 indicating the first
 direction eigenfunctions to test, must be the same length as LTest.
 Default is 2L}
 
-\item{LTest}{integer or increasing integer vector in 1:M2 indicating the second
+\item{LTest}{integer or nondecreasing integer vector in 1:M2 indicating the second
 direction eigenfunctions to test, must be the same length as JTest.
 Default is 2L}
 

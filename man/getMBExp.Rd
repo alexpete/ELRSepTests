@@ -34,9 +34,9 @@ to find L eigenvalues, but will only retain those that are positive.
 Default is M2, but this will almost always be too many.}
 
 \item{useFVE}{logical indicating whether or not to use cumulative FVEs to determine
-J and L.  If true, the values of J and L that achieve at
-least 1 - (1 - FVEthres)/2 are computed, and the provided values
-of J and L are ignored (default is FALSE)}
+J and L.  If true, the values of \code{JFVE} and \code{LFVE} that achieve at
+least 1 - (1 - FVEthres)/2 are computed, and the number of eigenvalues
+extracted are \code{Jext = max(J, JFVE)} and \code{Lext = max(L, LFVE)} (default is FALSE)}
 
 \item{FVEthres}{threshold for overall FVE required (default is 0.99)}
 }

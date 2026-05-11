@@ -128,7 +128,7 @@ WaldSepTests <- function(X, tt1 = 1:dim(X)[[2]], tt2 = 1:dim(X)[[3]],
     lamPWBoot <- sapply(1:B, \(b){ # partial and weak lambda values for bootstrap samples
       XBoot <- X[sample.int(n, n = n, replace = TRUE),,]
       MBEBoot <- getMBExp(X = XBoot, tt1 = tt1, tt2 = tt2, J = JTestMax, L = LTestMax)
-      LambdaBoot <- alignMBE(MBE, MBEBoot)$Lambda
+      LambdaBoot <- alignMBEBoot(MBE, MBEBoot, JTestMax, JTestMax)$Lambda
       return(getLambdaVec(LambdaBoot, JTestMax, LTestMax, indMat))
     })
 
@@ -256,24 +256,4 @@ getLambdaVec <- function(Lambda, J, L, indMat = NULL) {
   colInd <- (indMat[, "m"] - 1L) * J + indMat[, "k"]
 
   Lambda[cbind(rowInd, colInd)]
-}
-
-alignMBE <- function(MBE, MBEBoot){ # align MBEBoot with MBE
-  JBoot <- ncol(MBEBoot$Psi)
-  LBoot <- ncol(MBEBoot$Phi)
-
-  flipSignj <- diag(crossprod(MBE$Psi[, 1:JBoot], MBEBoot$Psi)) < 0
-  flipSignl <- diag(crossprod(MBE$Phi[, 1:LBoot], MBEBoot$Phi)) < 0
-
-  MBEBoot$Psi <- t(t(MBEBoot$Psi) * ifelse(flipSignj, -1, 1))
-  MBEBoot$Phi <- t(t(MBEBoot$Phi) * ifelse(flipSignl, -1, 1))
-
-  s <- unlist(lapply(1:LBoot, function(l) {
-    ifelse(xor(flipSignj, flipSignl[l]), -1, 1)
-  }))
-
-  MBEBoot$Lambda <- MBEBoot$Lambda * (s %o% s)
-  MBEBoot$scrs <- sweep(MBEBoot$scrs, 2, s, `*`)
-
-  return(MBEBoot)
 }

@@ -4,16 +4,20 @@
 \alias{drawBoot}
 \title{Draw a null-transformed bootstrap sample}
 \usage{
-drawBoot(MBExp, nullType)
+drawBoot(MBExp, nullType, mnBoot)
 }
 \arguments{
 \item{MBExp}{list output of getMBExp on original data}
 
 \item{nullType}{one of 'ParSep', 'WkSep', 'Sep' indicating the null hypothesis
 under which to draw the bootstrap sample}
+
+\item{mnBoot}{integer no larger than n giving the size of bootstrap samples
+to be drawn - an m-out-of-n bootstrap.
+for a full bootstrap}
 }
 \value{
-3D array of null-bootstrapped two-way data with dimensions n-by-p-by-s
+3D array of null-bootstrapped two-way data with dimensions mnBoot-by-p-by-s
 }
 \description{
 Modifes the marginal basis expansion to match a particular separability structure and appropriate bootstrap sample

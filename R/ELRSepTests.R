@@ -163,7 +163,8 @@ ELRSepTests <- function(X, tt1 = 1:dim(X)[2], tt2 = 1:dim(X)[3],
         LTestMaxBoot <- max(LTest[convInd])
 
         Xboot <- drawBoot(MBE, 'ParSep', mnBoot) # Null bootstrap under ParSep
-        MBEboot <- getMBExp(Xboot, tt1 = tt1, tt2 = tt2, J = JTestMaxBoot, L = LTestMaxBoot)
+        MBEboot <- getMBExp(Xboot, tt1 = tt1, tt2 = tt2, J = JTestMaxBoot, L = LTestMaxBoot, useFVE = TRUE)
+        MBEboot <- alignMBEBoot(MBE, MBEboot, JTest[convInd], LTest[convInd])
 
         scrsAugBoot <- getELTestData(MBEboot$scrs, J = JTestMaxBoot, L = LTestMaxBoot)
         scrsIndBoot <- getScrsInd(JTestMaxBoot, LTestMaxBoot) # for indexing columns of scrsAugBoot
@@ -194,7 +195,8 @@ ELRSepTests <- function(X, tt1 = 1:dim(X)[2], tt2 = 1:dim(X)[3],
         LTestMaxBoot <- max(LTest[convInd])
 
         Xboot <- drawBoot(MBE, 'WkSep', mnBoot) # Null bootstrap under WkSep
-        MBEboot <- getMBExp(Xboot, tt1 = tt1, tt2 = tt2, J = JTestMaxBoot, L = LTestMaxBoot)
+        MBEboot <- getMBExp(Xboot, tt1 = tt1, tt2 = tt2, J = JTestMaxBoot, L = LTestMaxBoot, useFVE = TRUE)
+        MBEboot <- alignMBEBoot(MBE, MBEboot, JTest[convInd], LTest[convInd])
 
         scrsAugBoot <- getELTestData(MBEboot$scrs, J = JTestMaxBoot, L = LTestMaxBoot)
         scrsIndBoot <- getScrsInd(JTestMaxBoot, LTestMaxBoot) # for indexing columns of scrsAugBoot
@@ -225,7 +227,8 @@ ELRSepTests <- function(X, tt1 = 1:dim(X)[2], tt2 = 1:dim(X)[3],
         JTestMaxBoot <- max(JTest[convInd])
         LTestMaxBoot <- max(LTest[convInd])
         Xboot <- drawBoot(MBE, 'Sep', mnBoot) # Null bootstrap under Sep
-        MBEboot <- getMBExp(Xboot, tt1 = tt1, tt2 = tt2, J = JTestMaxBoot, L = LTestMaxBoot)
+        MBEboot <- getMBExp(Xboot, tt1 = tt1, tt2 = tt2, J = JTestMaxBoot, L = LTestMaxBoot, useFVE = TRUE)
+        MBEboot <- alignMBEBoot(MBE, MBEboot, JTest[convInd], LTest[convInd])
 
         scrsAugBoot <- getELTestData(MBEboot$scrs, J = JTestMaxBoot, L = LTestMaxBoot)
         scrsIndBoot <- getScrsInd(JTestMaxBoot, LTestMaxBoot) # for indexing columns of scrsAugBoot

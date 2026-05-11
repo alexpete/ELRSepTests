@@ -6,12 +6,13 @@
 \usage{
 ELRSepTests(
   X,
-  tt1 = 1:dim(X)[[2]],
-  tt2 = 1:dim(X)[[3]],
+  tt1 = 1:dim(X)[2],
+  tt2 = 1:dim(X)[3],
   JTest = 2L,
   LTest = 2L,
   nullHyp = c("ParSep", "WkSep", "Sep"),
   B = 500L,
+  mnBoot = dim(X)[1],
   LSmax = 100L,
   ELctrl = melt::el_control(maxit = 10000L, maxit_l = 1000L),
   FVEthres = 0.99,
@@ -29,11 +30,11 @@ to functional data of length M1 (default is 1:M1)}
 \item{tt2}{optional observation grid if the second direction of X indexes
 to functional data of length M2 (default is 1:M2)}
 
-\item{JTest}{integer or increasing integer vector in 1:M1 indicating the first
+\item{JTest}{integer or nondecreasing integer vector in 1:M1 indicating the first
 direction eigenfunctions to test, must be the same length as LTest.
 Default is 2L}
 
-\item{LTest}{integer or increasing integer vector in 1:M2 indicating the second
+\item{LTest}{integer or nondecreasing integer vector in 1:M2 indicating the second
 direction eigenfunctions to test, must be the same length as JTest.
 Default is 2L}
 
@@ -41,6 +42,10 @@ Default is 2L}
 hypotheses to test (default is all)}
 
 \item{B}{number of bootstrap samples for computing P values (default is 500)}
+
+\item{mnBoot}{integer no larger than n giving the size of bootstrap samples
+to be drawn - an m-out-of-n bootstrap.  Default is \code{mnBoot = n}
+for a full bootstrap}
 
 \item{LSmax}{for finding the MELE under separability, the maximum number of line
 search steps to take (default = 100L)}

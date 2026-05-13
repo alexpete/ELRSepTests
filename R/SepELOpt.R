@@ -28,54 +28,138 @@ SepELOpt <- function(scrsAug, JTest, LTest, gammaStrt, betaStrt, aStrt,
   # Initial evaluation of EL
   thetaSCur <- aCur*kronecker(betaCur, gammaCur)
   numParsS <- length(thetaSCur)
-  elCur <- melt::el_mean(scrsAug, par = c(rep(0, ncol(scrsAug) - numParsS), thetaSCur),
-                   control = melt::el_control(maxit_l = mInr, tol_l = tolInr))
-  if(!elCur@optim$convergence){ # starting point is bad, likelihood should be zero
-    if(verb){
-      warning('EL evaluation did not converge at provided starting values.  Consider increasing mInr')
+  SepInd <- (ncol(scrsAug) - numParsS + 1):ncol(scrsAug)
+
+  makeSepELReturn <- function(el, thetaS, niter = 0L, LSFail = NA,
+                              converged = FALSE, convObj = FALSE,
+                              convGrad = FALSE, convStep = FALSE,
+                              maxGrad = NA_real_, objTrace = NULL,
+                              gradTrace = NULL, nEvalFail = 0L,
+                              nInnerFail = 0L, outerAttempted = FALSE,
+                              status = "outer_not_run", message = NULL){
+    finalInr <- el@optim$convergence
+
+    if(is.null(objTrace)){
+      objTrace <- el@logl / nrow(scrsAug)
     }
-    return(elCur)
-  } else {
-    SepInd <- (ncol(scrsAug) - numParsS + 1):ncol(scrsAug)
+    if(is.null(gradTrace)){
+      gradTrace <- NA_real_
+    }
 
-    res <- tryCatch(outer_optimize_rcpp(
-        scrsAug = scrsAug,
-        betaInit = betaStrt,            # your starting beta
-        gammaInit = gammaStrt,          # your starting gamma
-        aInit = aStrt,                  # starting a
-        LTest = LTest,
-        JTest = JTest,
-        numParsS = numParsS,
-        SepInd = SepInd,               # integer( ) indices (1-based)
-        mOtr = mOtr,
-        LSmax = LSmax,
-        mInr = mInr,
-        tolInr = tolInr,
-        tolOtr = tolOtr,
-        verb = verb
-      ),
-      error = function(e){
-        stop('At some point, the empirical likelihood could not be evaluated.  Consider reducing JTest and/or LTest to simplify the required optimization.')
-      }
+    el@optim$par <- rep(0, ncol(scrsAug))
+    el@optim$par[SepInd] <- thetaS
+    el@optim$iterations <- as.integer(niter)
+    el@optim$convergence <- list(
+      LSFail = LSFail,
+      Obj = convObj,
+      Grad = convGrad,
+      Step = convStep,
+      maxGrad = maxGrad,
+      FinalInr = finalInr,
+      objTrace = objTrace,
+      gradTrace = gradTrace,
+      converged = converged,
+      outerAttempted = outerAttempted,
+      status = status,
+      message = message,
+      nEvalFail = as.integer(nEvalFail),
+      nInnerFail = as.integer(nInnerFail)
     )
-
-    elNew <- res$elNew
-    LSFail <- res$LSFail
-    convGrad <- res$convGrad; convStep <- res$convStep; maxGrad <- res$maxGrad
-    niter <- res$niter
-    elNew@optim$par <- rep(0, ncol(scrsAug))
-    elNew@optim$par[SepInd] <- res$thetaS
-    elNew@optim$iterations <- niter # number of outer iterations
-    elNew@optim$convergence <- list('LSFail' = LSFail,
-                                    'Obj' = res$convObj,
-                                    'Grad' = convGrad,
-                                    'Step' = convStep,
-                                    'maxGrad' = maxGrad,
-                                    'FinalInr' = elNew@optim$convergence,  # did final el_eval converge?
-                                    'objTrace' = res$objTrace,
-                                    'gradTrace' = res$gradTrace)
-    elNew@df <- as.integer(LTest + JTest - 1)
-
-    return(elNew)
+    el@df <- as.integer(LTest + JTest - 1)
+    el
   }
+
+  elCur <- melt::el_mean(scrsAug,
+                         par = c(rep(0, ncol(scrsAug) - numParsS), thetaSCur),
+                         control = melt::el_control(maxit_l = mInr, tol_l = tolInr))
+
+  if(!elCur@optim$convergence){
+    if(verb){
+      warning('EL evaluation did not converge at provided starting values. Outer optimization was not run. Consider increasing mInr.',
+              call. = FALSE)
+    }
+
+    return(makeSepELReturn(
+      el = elCur,
+      thetaS = thetaSCur,
+      niter = 0L,
+      LSFail = NA,
+      converged = FALSE,
+      convObj = FALSE,
+      convGrad = FALSE,
+      convStep = FALSE,
+      maxGrad = NA_real_,
+      objTrace = elCur@logl / nrow(scrsAug),
+      gradTrace = NA_real_,
+      nEvalFail = 0L,
+      nInnerFail = 0L,
+      outerAttempted = FALSE,
+      status = "initial_inner_failed",
+      message = "Initial inner EL optimization failed; outer optimization was not run."
+    ))
+  }
+
+  res <- outer_optimize_rcpp(
+    scrsAug = scrsAug,
+    betaInit = betaStrt,
+    gammaInit = gammaStrt,
+    aInit = aStrt,
+    LTest = LTest,
+    JTest = JTest,
+    numParsS = numParsS,
+    SepInd = SepInd,
+    mOtr = mOtr,
+    LSmax = LSmax,
+    mInr = mInr,
+    tolInr = tolInr,
+    tolOtr = tolOtr,
+    verb = verb
+  )
+
+  status <- if(isTRUE(res$converged)){
+    "converged"
+  } else if(isTRUE(res$LSFail)){
+    "outer_line_search_failed"
+  } else if(res$niter >= mOtr){
+    "outer_iteration_limit"
+  } else {
+    "outer_not_converged"
+  }
+
+  message <- switch(status,
+                    converged = "Outer optimization converged.",
+                    outer_line_search_failed = "Outer optimization stopped after line search failed; returning best available iterate.",
+                    outer_iteration_limit = "Outer optimization reached the maximum number of iterations; returning best available iterate.",
+                    outer_not_converged = "Outer optimization stopped without satisfying convergence criteria; returning best available iterate.")
+
+  elNew <- makeSepELReturn(
+    el = res$elNew,
+    thetaS = res$thetaS,
+    niter = res$niter,
+    LSFail = res$LSFail,
+    converged = res$converged,
+    convObj = res$convObj,
+    convGrad = res$convGrad,
+    convStep = res$convStep,
+    maxGrad = res$maxGrad,
+    objTrace = res$objTrace,
+    gradTrace = res$gradTrace,
+    nEvalFail = res$nEvalFail,
+    nInnerFail = res$nInnerFail,
+    outerAttempted = TRUE,
+    status = status,
+    message = message
+  )
+
+  if(!isTRUE(res$converged)){
+    warning(message, call. = FALSE)
+  }
+  if((res$nEvalFail > 0L || res$nInnerFail > 0L) && verb){
+    warning("Line search rejected candidate steps: ",
+            res$nEvalFail, " failed EL evaluations and ",
+            res$nInnerFail, " inner convergence failures.",
+            call. = FALSE)
+  }
+
+  return(elNew)
 }

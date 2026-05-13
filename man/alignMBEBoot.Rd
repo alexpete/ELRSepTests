@@ -4,14 +4,14 @@
 \alias{alignMBEBoot}
 \title{Align a bootstrap marginal basis expansion to the original basis}
 \usage{
-alignMBEBoot(MBE, MBEboot, JTest, LTest, buffer = NULL)
+alignMBEBoot(MBE, MBEboot, JTest, LTest, tt1 = NULL, tt2 = NULL, buffer = NULL)
 }
 \arguments{
 \item{MBE}{List returned by \code{getMBExp} for the original sample. Must
-contain elements \code{Psi}, \code{Phi}, and \code{scrs}.}
+contain elements \code{Psi}, \code{Phi}, \code{scrs}, and \code{Lambda}.}
 
 \item{MBEboot}{List returned by \code{getMBExp} for a bootstrap sample. Must
-contain elements \code{Psi}, \code{Phi}, and \code{scrs}.}
+contain elements \code{Psi}, \code{Phi}, \code{scrs}, and \code{Lambda}.}
 
 \item{JTest}{Integer or integer vector giving the first-margin testing
 dimensions. The function keeps \code{max(JTest)} aligned columns of
@@ -21,6 +21,12 @@ dimensions. The function keeps \code{max(JTest)} aligned columns of
 dimensions. The function keeps \code{max(LTest)} aligned columns of
 \code{Phi}.}
 
+\item{tt1}{observation grid if the first direction of X indexes functional data,
+otherwise should just be a vector of ones of length \code{nrow(MBEboot$Psi)}}
+
+\item{tt2}{observation grid if the second direction of X indexes functional data,
+otherwise should just be a vector of ones of length \code{nrow(MBEboot$Phi)}}
+
 \item{buffer}{Optional nonnegative integer giving the number of extra
 bootstrap eigenfunctions, beyond \code{K}, to consider as alignment
 candidates in each margin. If \code{NULL}, a default candidate-set size of
@@ -29,7 +35,7 @@ bootstrap eigenfunctions.}
 }
 \value{
 A modified copy of \code{MBEboot} with aligned and truncated
-\code{Psi}, \code{Phi}, and \code{scrs}. The returned object also contains
+\code{Psi}, \code{Phi}, \code{scrs}, and \code{Lambda}. The returned object also contains
 an \code{alignInfo} element with the selected permutations, signs,
 alignments, and candidate-set sizes for each margin.
 }

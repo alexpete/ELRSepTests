@@ -134,6 +134,8 @@ List outer_optimize_rcpp(const arma::mat& scrsAug,
   double maxStep = NA_REAL;
   int stepStreak = 0;
   int niter = 0;
+  int nEvalFail = 0;
+  int nInnerFail = 0;
 
   while ((niter < mOtr) && !LSFail && !conv) {
     if (verb) Rcpp::Rcout << "Iteration " << (niter + 1) << "\n";
@@ -177,10 +179,50 @@ List outer_optimize_rcpp(const arma::mat& scrsAug,
       mat gTmp = scrsAug.each_row() - d;
 
       Rcpp::S4 ctrlLS = el_control(_["maxit_l"] = mInr, _["tol_l"] = tolInr);
-      Rcpp::S4 elTmp = el_mean(_["x"] = scrsAug, _["par"] = d, _["control"] = ctrlLS);
-      double logl = as<double>(elTmp.slot("logl")) / nObs;
+      bool evalOK = true;
+      Rcpp::S4 elTmp;
+      double logl = NA_REAL;
 
-      if (logl > logLikCur) {
+      try {
+        elTmp = el_mean(_["x"] = scrsAug, _["par"] = d, _["control"] = ctrlLS);
+        logl = as<double>(elTmp.slot("logl")) / nObs;
+
+        List optTmp = elTmp.slot("optim");
+        bool innerConv = as<bool>(optTmp["convergence"]);
+
+        if (!R_finite(logl)) {
+          evalOK = false;
+          ++nEvalFail;
+          if (verb) {
+            Rcpp::Rcout << "  rejected step=" << step
+                        << " because el_mean returned non-finite log-likelihood\n";
+          }
+        } else if (!innerConv) {
+          evalOK = false;
+          ++nInnerFail;
+          if (verb) {
+            Rcpp::Rcout << "  rejected step=" << step
+                        << " because inner EL optimization did not converge\n";
+          }
+        }
+      } catch (std::exception &ex) {
+        evalOK = false;
+        ++nEvalFail;
+        if (verb) {
+          Rcpp::Rcout << "  rejected step=" << step
+                      << " because el_mean failed: "
+                      << ex.what() << "\n";
+        }
+      } catch (...) {
+        evalOK = false;
+        ++nEvalFail;
+        if (verb) {
+          Rcpp::Rcout << "  rejected step=" << step
+                      << " because el_mean failed with unknown error\n";
+        }
+      }
+
+      if (evalOK && logl > logLikCur) {
         accepted = true;
         logLikNew = logl;
         thetaSNew = thetaSTmp;
@@ -292,6 +334,8 @@ List outer_optimize_rcpp(const arma::mat& scrsAug,
     _["stepStreak"] = stepStreak,
     _["maxGrad"] = maxGrad,
     _["objWinChange"] = objWinChange,
-    _["maxStep"] = maxStep
+    _["maxStep"] = maxStep,
+    _["nEvalFail"] = nEvalFail,
+    _["nInnerFail"] = nInnerFail
   );
 }

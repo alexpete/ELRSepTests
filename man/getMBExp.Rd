@@ -36,7 +36,7 @@ Default is M2, but this will almost always be too many.}
 \item{useFVE}{logical indicating whether or not to use cumulative FVEs to determine
 J and L.  If true, the values of \code{JFVE} and \code{LFVE} that achieve at
 least 1 - (1 - FVEthres)/2 are computed, and the number of eigenvalues
-extracted are \code{Jext = max(J, JFVE)} and \code{Lext = max(L, LFVE)} (default is FALSE)}
+extracted are \code{Jext = min(J, JFVE)} and \code{Lext = min(L, LFVE)} (default is FALSE)}
 
 \item{FVEthres}{threshold for overall FVE required (default is 0.99)}
 }

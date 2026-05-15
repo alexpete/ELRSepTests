@@ -128,7 +128,7 @@ WaldSepTests <- function(X, tt1 = 1:dim(X)[[2]], tt2 = 1:dim(X)[[3]],
     lamPWBoot <- sapply(1:B, \(b){ # partial and weak lambda values for bootstrap samples
       XBoot <- X[sample.int(n, n = n, replace = TRUE),,]
       MBEBoot <- getMBExp(X = XBoot, tt1 = tt1, tt2 = tt2, J = JTestMax, L = LTestMax)
-      LambdaBoot <- alignMBEBoot(MBE, MBEBoot, JTestMax, JTestMax, tt1, tt2)$Lambda
+      LambdaBoot <- alignMBEBoot(MBE, MBEBoot, JTestMax, LTestMax, tt1, tt2)$Lambda
       return(getLambdaVec(LambdaBoot, JTestMax, LTestMax, indMat))
     })
 

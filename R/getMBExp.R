@@ -19,7 +19,7 @@
 #' @param useFVE logical indicating whether or not to use cumulative FVEs to determine
 #'               J and L.  If true, the values of `JFVE` and `LFVE` that achieve at
 #'               least 1 - (1 - FVEthres)/2 are computed, and the number of eigenvalues
-#'               extracted are `Jext = min(J, JFVE)` and `Lext = min(L, LFVE)` (default is FALSE)
+#'                extracted are `Jext = max(J, JFVE)` and `Lext = max(L, LFVE)` (default is FALSE)
 #' @param FVEthres threshold for overall FVE required (default is 0.99)
 #'
 #' @return list with five elements
@@ -96,8 +96,8 @@ getMBExp <- function(X, tt1 = 1:dim(X)[[2]], tt2 = 1:dim(X)[[3]], J = length(tt1
     th <- 1 - (1 - FVEthres)/2
     JFVE <- min(which(cumFVE[[1]] > th))
     LFVE <- min(which(cumFVE[[2]] > th))
-    J <- min(min(J, JFVE), length(cumFVE$Dim1)) # smallest of J, JFVE, and number of positive eigenvalues
-    L <- min(min(L, LFVE), length(cumFVE$Dim2)) # smallest of L, LFVE, and number of positive eigenvalues
+    J <- min(max(J, JFVE), length(cumFVE$Dim1)) # smaller of max(J, JFVE) and number of positive eigenvalues
+    L <- min(max(L, LFVE), length(cumFVE$Dim2)) # smaller of max(L, LFVE) and number of positive eigenvalues
   } else {
     J <- min(J, length(cumFVE$Dim1)) # smaller of J and number of positive eigenvalues
     L <- min(L, length(cumFVE$Dim2)) # smaller of L and number of positive eigenvalues

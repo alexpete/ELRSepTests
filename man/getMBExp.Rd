@@ -6,10 +6,10 @@
 \usage{
 getMBExp(
   X,
-  tt1 = 1:dim(X)[[2]],
-  tt2 = 1:dim(X)[[3]],
-  J = length(tt1),
-  L = length(tt2),
+  tt1 = NULL,
+  tt2 = NULL,
+  J = dim(X)[2],
+  L = dim(X)[3],
   useFVE = FALSE,
   FVEthres = 0.99
 )
@@ -20,10 +20,10 @@ n observations, with \code{X[i,,]} consisting of a M1-by-M2 discretization of th
 two-way data for the i-th observational unit}
 
 \item{tt1}{optional observation grid if the second direction of X indexes
-to functional data of length M1 (default is 1:M1)}
+to functional data of length M1 (default is NULL)}
 
 \item{tt2}{optional observation grid if the second direction of X indexes
-to functional data of length M2 (default is 1:M2)}
+to functional data of length M2 (default is NULL)}
 
 \item{J}{number of eigenvalues to extract in the first direction. Will attempt
 to find J eigenvalues, but will only retain those that are positive.
@@ -36,7 +36,7 @@ Default is M2, but this will almost always be too many.}
 \item{useFVE}{logical indicating whether or not to use cumulative FVEs to determine
 J and L.  If true, the values of \code{JFVE} and \code{LFVE} that achieve at
 least 1 - (1 - FVEthres)/2 are computed, and the number of eigenvalues
-extracted are \code{Jext = max(J, JFVE)} and \code{Lext = max(L, LFVE)} (default is FALSE)}
+extracted are \code{Jext = min(J, JFVE)} and \code{Lext = min(L, LFVE)} (default is FALSE)}
 
 \item{FVEthres}{threshold for overall FVE required (default is 0.99)}
 }

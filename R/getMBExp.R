@@ -7,9 +7,9 @@
 #'          n observations, with `X[i,,]` consisting of a M1-by-M2 discretization of the
 #'          two-way data for the i-th observational unit
 #' @param tt1 optional observation grid if the second direction of X indexes
-#'            to functional data of length M1 (default is 1:M1)
+#'            to functional data of length M1 (default is NULL)
 #' @param tt2 optional observation grid if the second direction of X indexes
-#'            to functional data of length M2 (default is 1:M2)
+#'            to functional data of length M2 (default is NULL)
 #' @param J number of eigenvalues to extract in the first direction. Will attempt
 #'          to find J eigenvalues, but will only retain those that are positive.
 #'          Default is M1, but this will almost always be too many.
@@ -19,7 +19,7 @@
 #' @param useFVE logical indicating whether or not to use cumulative FVEs to determine
 #'               J and L.  If true, the values of `JFVE` and `LFVE` that achieve at
 #'               least 1 - (1 - FVEthres)/2 are computed, and the number of eigenvalues
-#'                extracted are `Jext = max(J, JFVE)` and `Lext = max(L, LFVE)` (default is FALSE)
+#'                extracted are `Jext = min(J, JFVE)` and `Lext = min(L, LFVE)` (default is FALSE)
 #' @param FVEthres threshold for overall FVE required (default is 0.99)
 #'
 #' @return list with five elements
@@ -43,31 +43,37 @@
 #'                     trace operator and may be greater than J or L
 #' @export
 
-getMBExp <- function(X, tt1 = 1:dim(X)[[2]], tt2 = 1:dim(X)[[3]], J = length(tt1),
-                     L = length(tt2), useFVE = FALSE, FVEthres = 0.99) {
+getMBExp <- function(X, tt1 = NULL, tt2 = NULL, J = dim(X)[2],
+                     L = dim(X)[3], useFVE = FALSE, FVEthres = 0.99) {
 
   if(!is.array(X) || length(dim(X)) != 3) stop('X must be a 3D array')
 
-  n <- dim(X)[[1]]; M1 <- dim(X)[[2]]; M2 <- dim(X)[[3]]
+  n <- dim(X)[1]; M1 <- dim(X)[2]; M2 <- dim(X)[3]
 
-  if(length(tt1) != M1 || length(tt2) != M2){
-    stop('Lengths of tt1 and tt2 must match second and third dimensions of X')
+  if(!is.null(tt1)){
+    if(!is.vector(tt1, mode = "numeric")) stop('tt1 and tt2 must be numeric vectors if provided')
+    if(length(tt1) != M1) stop('Lengths of tt1 and tt2 must match second and third dimensions of X')
+    if(any(diff(tt1) <= 0)) stop('values in tt1 and tt2 must be increasing')
+  }
+  if(!is.null(tt2)){
+    if(!is.vector(tt2, mode = "numeric")) stop('tt1 and tt2 must be numeric vectors if provided')
+    if(length(tt2) != M2) stop('Lengths of tt1 and tt2 must match second and third dimensions of X')
+    if(any(diff(tt2) <= 0)) stop('values in tt1 and tt2 must be increasing')
   }
 
   if(J > M1 || L > M2){
-    warning('J/L cannot be larger than M1/M2 - restting to default')
+    warning('J/L cannot be larger than M1/M2 - resetting to default')
     J <- M1; L <- M2
   }
 
   ## Rescale X if either of the dimensions are functional
-  d1 <- diff(tt1); d2 <- diff(tt2)
-  if(any(d1 != 1)){
+  if(!is.null(tt1)){
     w1 <- getTrapzVec(tt1)
   } else {
     w1 <- rep(1, M1)
   }
 
-  if(any(d2 != 1)){
+  if(!is.null(tt2)){
     w2 <- getTrapzVec(tt2)
   } else {
     w2 <- rep(1, M2)
@@ -77,7 +83,7 @@ getMBExp <- function(X, tt1 = 1:dim(X)[[2]], tt2 = 1:dim(X)[[3]], J = length(tt1
   Xc <- sweep(X, c(2, 3), Xbar)
 
   # Y is rescaled and centered X to do PCA appropriately if either direction is functional
-  if(any(c(d1, d2) != 1)){
+  if(!(is.null(tt1) && is.null(tt2))){
     W <- tcrossprod(sqrt(w1), sqrt(w2))
     Y <- Xc * aperm(array(W, dim = c(M1, M2, n)), c(3, 1, 2))
   } else {
@@ -89,15 +95,19 @@ getMBExp <- function(X, tt1 = 1:dim(X)[[2]], tt2 = 1:dim(X)[[3]], J = length(tt1
   KerMerc <- lapply(PartialTrKers, eigen, symmetric = TRUE) # Mercer decomposition of kernels
 
   ## Get cumulative FVEs
-  cumFVE <- lapply(KerMerc, function(K) cumsum(K$values[K$values > 0]/sum(K$values[K$values > 0])))
+  margEigenvalues <- lapply(KerMerc, function(K) K$values[K$values > 0])
+  gamma <- margEigenvalues[[1]]
+  beta <- margEigenvalues[[2]]
+
+  cumFVE <- lapply(margEigenvalues, function(mev) cumsum(mev)/sum(mev))
   names(cumFVE) <- c('Dim1', 'Dim2')
 
   if(useFVE){
     th <- 1 - (1 - FVEthres)/2
-    JFVE <- min(which(cumFVE[[1]] > th))
-    LFVE <- min(which(cumFVE[[2]] > th))
-    J <- min(max(J, JFVE), length(cumFVE$Dim1)) # smaller of max(J, JFVE) and number of positive eigenvalues
-    L <- min(max(L, LFVE), length(cumFVE$Dim2)) # smaller of max(L, LFVE) and number of positive eigenvalues
+    JFVE <- min(which(cumFVE[[1]] > th)) # will be no larger than length(cumFVE$Dim1)
+    LFVE <- min(which(cumFVE[[2]] > th)) # will be no larger than length(cumFVE$Dim2)
+    J <- min(J, JFVE) # smaller of J and number of meaningful positive eigenvalues
+    L <- min(L, LFVE) # smaller of L and number of meaningful positive eigenvalues
   } else {
     J <- min(J, length(cumFVE$Dim1)) # smaller of J and number of positive eigenvalues
     L <- min(L, length(cumFVE$Dim2)) # smaller of L and number of positive eigenvalues
@@ -112,8 +122,9 @@ getMBExp <- function(X, tt1 = 1:dim(X)[[2]], tt2 = 1:dim(X)[[3]], J = length(tt1
   scrs <- t(matrix(aperm(Y, c(2, 3, 1)), nrow = M1 * M2)) %*% kronecker(Phi, Psi)
   Lambda <- cov(scrs)*(n - 1)/n
 
-  if(any(d1 != 1)) Psi <- Psi * (1/sqrt(w1))
-  if(any(d2 != 1)) Phi <- Phi * (1/sqrt(w2))
+  if(!is.null(tt1)) Psi <- Psi * (1/sqrt(w1))
+  if(!is.null(tt2)) Phi <- Phi * (1/sqrt(w2))
 
-  return(list('Psi' = Psi, 'Phi' = Phi, 'scrs' = scrs, 'Xbar' = Xbar, 'Lambda' = Lambda, 'cumFVE' = cumFVE))
+  return(list('Psi' = Psi, 'Phi' = Phi, 'scrs' = scrs, 'Xbar' = Xbar, 'Lambda' = Lambda,
+              'cumFVE' = cumFVE, 'gamma' = gamma, 'beta' = beta))
 }

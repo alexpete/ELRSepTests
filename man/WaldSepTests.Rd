@@ -6,8 +6,8 @@
 \usage{
 WaldSepTests(
   X,
-  tt1 = 1:dim(X)[[2]],
-  tt2 = 1:dim(X)[[3]],
+  tt1 = NULL,
+  tt2 = NULL,
   JTest = 2L,
   LTest = 2L,
   nullHyp = c("ParSep", "WkSep", "Sep"),
@@ -21,10 +21,10 @@ n observations, with \code{X[i,,]} consisting of a M1-by-M2 discretization of th
 two-way data for the i-th observational unit}
 
 \item{tt1}{optional observation grid if the second direction of X indexes
-to functional data of length M1 (default is 1:M1)}
+to functional data of length M1 (default is NULL)}
 
 \item{tt2}{optional observation grid if the second direction of X indexes
-to functional data of length M2 (default is 1:M2)}
+to functional data of length M2 (default is NULL)}
 
 \item{JTest}{integer or nondecreasing integer vector in 1:M1 indicating the first
 direction eigenfunctions to test, must be the same length as LTest.

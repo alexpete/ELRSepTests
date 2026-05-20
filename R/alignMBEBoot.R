@@ -48,7 +48,8 @@
 #'   alignments, and candidate-set sizes for each margin.
 #'
 #' @keywords internal
-alignMBEBoot <- function(MBE, MBEboot, JTest, LTest, tt1 = NULL, tt2 = NULL, buffer = NULL) {
+alignMBEBoot <- function(MBE, MBEboot, JTest, LTest, tt1 = NULL, tt2 = NULL,
+                         buffer = NULL) {
   J <- max(JTest)
   L <- max(LTest)
 
@@ -77,14 +78,40 @@ alignMBEBoot <- function(MBE, MBEboot, JTest, LTest, tt1 = NULL, tt2 = NULL, buf
     buffer <- as.integer(buffer)
   }
 
-  allPerms <- function(x, k) {
-    if (k == 1L) {
-      return(matrix(x, ncol = 1L))
+  bandedBeamPerm <- function(A, maxShift = 2L, beamWidth = 200L) {
+    K <- nrow(A)
+    nCand <- ncol(A)
+
+    states <- list(list(perm = integer(0L), score = 0))
+
+    for (i in seq_len(K)) {
+      cand <- seq.int(max(1L, i - maxShift), min(nCand, i + maxShift))
+      newStates <- list()
+      idx <- 1L
+
+      for (st in states) {
+        avail <- setdiff(cand, st$perm)
+
+        for (cc in avail) {
+          newStates[[idx]] <- list(
+            perm = c(st$perm, cc),
+            score = st$score + A[i, cc]
+          )
+          idx <- idx + 1L
+        }
+      }
+
+      if (!length(newStates)) {
+        stop("No valid local alignment found; increase maxShift or beamWidth.")
+      }
+
+      scores <- vapply(newStates, `[[`, numeric(1L), "score")
+      keep <- head(order(scores, decreasing = TRUE), beamWidth)
+      states <- newStates[keep]
     }
 
-    do.call(rbind, lapply(seq_along(x), function(i) {
-      cbind(x[i], allPerms(x[-i], k - 1L))
-    }))
+    scores <- vapply(states, `[[`, numeric(1L), "score")
+    states[[which.max(scores)]]$perm
   }
 
   alignOne <- function(Boot, Orig, K, tt, buffer) {
@@ -95,8 +122,10 @@ alignMBEBoot <- function(MBE, MBEboot, JTest, LTest, tt1 = NULL, tt2 = NULL, buf
       stop("Requested alignment dimension exceeds number of bootstrap eigenfunctions.")
     }
 
+    maxShift <- 2L
+
     if (is.null(buffer)) {
-      nCand <- min(ncol(Boot), max(K + 2L, 2L * K))
+      nCand <- min(ncol(Boot), K + maxShift)
     } else {
       nCand <- min(ncol(Boot), K + buffer)
     }
@@ -104,24 +133,15 @@ alignMBEBoot <- function(MBE, MBEboot, JTest, LTest, tt1 = NULL, tt2 = NULL, buf
     BootCand <- Boot[, seq_len(nCand), drop = FALSE]
     OrigK <- Orig[, seq_len(K), drop = FALSE]
 
-    ## Alignment scores: rows index original eigenfunctions and columns index
-    ## candidate bootstrap eigenfunctions.
-    d <- diff(tt)
-    if(any(d != 1)){
+    if(!is.null(tt)){
       w <- getTrapzVec(tt)
     } else {
-      w <- tt
+      w <- rep(1, nrow(OrigK))
     }
 
     A <- abs(crossprod(OrigK * w, BootCand))
 
-    ## Exhaustively search ordered selections of K distinct bootstrap candidate
-    ## eigenfunctions. This is feasible because K is small in the testing use case.
-    perms <- allPerms(seq_len(nCand), K)
-    scores <- apply(perms, 1L, function(p) {
-      sum(A[cbind(seq_len(K), p)])
-    })
-    perm <- perms[which.max(scores), ]
+    perm <- bandedBeamPerm(A, maxShift = maxShift, beamWidth = 200L)
 
     Aligned <- BootCand[, perm, drop = FALSE]
 
@@ -134,7 +154,8 @@ alignMBEBoot <- function(MBE, MBEboot, JTest, LTest, tt1 = NULL, tt2 = NULL, buf
       perm = perm,
       signs = signs,
       alignment = diag(crossprod(OrigK, Aligned)),
-      nCand = nCand
+      nCand = nCand,
+      maxShift = maxShift
     )
   }
 
@@ -154,8 +175,6 @@ alignMBEBoot <- function(MBE, MBEboot, JTest, LTest, tt1 = NULL, tt2 = NULL, buf
     stop("MBEboot$Lambda must be symmetric.")
   }
 
-  ## Score columns and Lambda rows/columns are assumed to be ordered with the
-  ## first-margin index moving fastest: index (j, l) is (l - 1) * qBoot + j.
   oldIdx <- integer(J * L)
   sgn <- numeric(J * L)
 

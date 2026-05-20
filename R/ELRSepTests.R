@@ -6,9 +6,9 @@
 #'          n observations, with `X[i,,]` consisting of a M1-by-M2 discretization of the
 #'          two-way data for the i-th observational unit
 #' @param tt1 optional observation grid if the second direction of X indexes
-#'            to functional data of length M1 (default is 1:M1)
+#'            to functional data of length M1 (default is NULL)
 #' @param tt2 optional observation grid if the second direction of X indexes
-#'            to functional data of length M2 (default is 1:M2)
+#'            to functional data of length M2 (default is NULL)
 #' @param JTest integer or nondecreasing integer vector in 1:M1 indicating the first
 #'              direction eigenfunctions to test, must be the same length as LTest.
 #'              Default is 2L
@@ -49,7 +49,7 @@
 #'                      thin = TRUE
 #' @export
 
-ELRSepTests <- function(X, tt1 = 1:dim(X)[2], tt2 = 1:dim(X)[3],
+ELRSepTests <- function(X, tt1 = NULL, tt2 = NULL,
                         JTest = 2L, LTest = 2L,
                         nullHyp = c('ParSep', 'WkSep', 'Sep'),
                         B = 500L, mnBoot = dim(X)[1], LSmax = 100L,
@@ -63,8 +63,15 @@ ELRSepTests <- function(X, tt1 = 1:dim(X)[2], tt2 = 1:dim(X)[3],
 
   n <- dim(X)[1]; M1 <- dim(X)[2]; M2 <- dim(X)[3]
 
-  if(length(tt1) != M1 || length(tt2) != M2){
-    stop('Lengths of tt1 and tt2 must match second and third dimensions of X')
+  if(!is.null(tt1)){
+    if(!is.vector(tt1, mode = "numeric")) stop('tt1 and tt2 must be numeric vectors if provided')
+    if(length(tt1) != M1) stop('Lengths of tt1 and tt2 must match second and third dimensions of X')
+    if(any(diff(tt1) <= 0)) stop('values in tt1 and tt2 must be increasing')
+  }
+  if(!is.null(tt2)){
+    if(!is.vector(tt2, mode = "numeric")) stop('tt1 and tt2 must be numeric vectors if provided')
+    if(length(tt2) != M2) stop('Lengths of tt1 and tt2 must match second and third dimensions of X')
+    if(any(diff(tt2) <= 0)) stop('values in tt1 and tt2 must be increasing')
   }
 
   if(mnBoot > n) stop('mnBoot cannot be larger than n')
@@ -104,7 +111,7 @@ ELRSepTests <- function(X, tt1 = 1:dim(X)[2], tt2 = 1:dim(X)[3],
 
   JTestMax <- max(JTest)
   LTestMax <- max(LTest)
-  MBE <- getMBExp(X = X, tt1 = tt1, tt2 = tt2, J = JTestMax, L = LTestMax, useFVE = TRUE)
+  MBE <- getMBExp(X = X, tt1 = tt1, tt2 = tt2, useFVE = TRUE)
   J <- ncol(MBE$Psi)
   L <- ncol(MBE$Phi)
 
@@ -112,7 +119,7 @@ ELRSepTests <- function(X, tt1 = 1:dim(X)[2], tt2 = 1:dim(X)[3],
     stop('Value in JTest and LTest are all too large as they all involve negative empirical eigenvalues')
   }
   if(JTestMax > J || LTestMax > L){
-    warning('At least one element JTest/LTest is too large after marginal basis expansions computed - removing infeasible values')
+    warning('At least one element of JTest/LTest is too large after marginal basis expansions computed - removing infeasible values')
     JTest <- JTest[JTest <= J]
     LTest <- LTest[LTest <= L]
     if(length(JTest) != length(LTest)){

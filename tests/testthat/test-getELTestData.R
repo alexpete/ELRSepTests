@@ -45,6 +45,27 @@ test_that("output dimensions are consistent with theory", {
   expect_equal(ncol(out), expected_cols)
 })
 
+# Test to make sure the output matches the one that you computed by hand
+test_that("output dimensions are correct", {
+
+  scrs <- matrix(1:27, nrow = 3)
+  J <- 3
+  L <- 3
+  JTest <- 2
+  LTest <- 2
+
+  out <- getELTestData(scrs, J, L, JTest = 2, LTest = 2)
+
+  out_expected <- matrix(c(10, 13, 40, 52, 4, 130, 1, 16, 100, 169,
+                           22, 28, 55, 70, 10, 154, 4, 25, 121, 196,
+                           36, 45, 72, 90, 18, 180, 9, 36, 144, 225),
+                         nrow = 3,
+                         byrow = TRUE)
+
+  expect_equal(out, out_expected)
+})
+
+
 # Wrong Matrix shape
 test_that("errors when J*L does not match ncol(scrs)", {
 

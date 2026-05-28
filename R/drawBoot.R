@@ -12,12 +12,92 @@
 #'
 drawBoot <- function(MBExp, nullType, mnBoot){
 
+  # Core Input Checks
+  if (!is.list(MBExp)) {
+    stop("MBExp must be a list")
+  }
+
+  required_names <- c("Psi", "Phi", "scrs", "Lambda")
+  if (!all(required_names %in% names(MBExp))) {
+    stop("MBExp is missing required components: Psi, Phi, scrs, Lambda")
+  }
+
+  # Finite Value Checks
+
+  check_finite <- function(x, name) {
+    if (any(!is.finite(x))) {
+      stop(paste(name, "contains NA, NaN, or Inf values"))
+    }
+  }
+
+  check_finite(MBExp$Psi, "Psi")
+  check_finite(MBExp$Phi, "Phi")
+  check_finite(MBExp$scrs, "scrs")
+  check_finite(MBExp$Lambda, "Lambda")
+
+  # Dimension consistency checks
+  # Psi dimensions
+  if (nrow(MBExp$Psi) <= 0 || ncol(MBExp$Psi) <= 0) {
+    stop("Psi has invalid dimensions")
+  }
+
+  # Phi dimensions
+  if (nrow(MBExp$Phi) <= 0 || ncol(MBExp$Phi) <= 0) {
+    stop("Phi has invalid dimensions")
+  }
+
+  # Bootstrap Parameter Checks
+  n <- nrow(MBExp$scrs)
+
+  if (!is.numeric(mnBoot) ||
+      length(mnBoot) != 1 ||
+      is.na(mnBoot) ||
+      !is.finite(mnBoot) ||
+      abs(mnBoot - round(mnBoot)) > 1e-10 ||
+      mnBoot <= 0) {
+
+    stop("mnBoot must be a single finite positive integer value")
+  }
+
+  if (mnBoot <= 0) {
+    stop("mnBoot must be greater than 0")
+  }
+
+  if (mnBoot > n) {
+    stop("mnBoot cannot exceed number of observations n")
+  }
+
   p <- nrow(MBExp$Psi)
   q <- ncol(MBExp$Psi)
   s <- nrow(MBExp$Phi)
   L <- ncol(MBExp$Phi)
   n <- nrow(MBExp$scrs)
   scrs <- MBExp$scrs
+
+  if (ncol(MBExp$scrs) != q * L) {
+    stop("scrs columns must equal ncol(Psi) * ncol(Phi)")
+  }
+
+  valid_types <- c("ParSep", "WkSep", "Sep")
+
+  if (!is.character(nullType) || length(nullType) != 1) {
+    stop("nullType must be a single character string")
+  }
+
+  if (!(nullType %in% valid_types)) {
+    stop("nullType must be one of: ParSep, WkSep, Sep")
+  }
+
+  # Lambda Specific Checks
+  # Lambda must be a matrix
+  if (!is.matrix(MBExp$Lambda)) {
+    stop("Lambda must be a matrix")
+  }
+
+  # Diagonal must be positive for scaling
+  if (any(diag(MBExp$Lambda) <= 0)) {
+    stop("Lambda diagonal must contain strictly positive values")
+  }
 
   switch(nullType,
          ParSep = { # sample across different functional bases independently

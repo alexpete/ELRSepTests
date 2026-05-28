@@ -17,12 +17,54 @@
 
 getELTestData <- function(scrs, J, L, JTest = J, LTest = L) {
 
+  # Needs to be a matrix
+  if (!is.matrix(scrs)) {
+    stop("scores must be a matrix")
+  }
+
+  # Needs to be numeric
+  if (!is.numeric(scrs)) {
+    stop("scores must be numeric")
+  }
+
+  # Needs to be finite
+  if (any(!is.finite(scrs))) {
+    stop("scores contain NA, NaN, or Inf values")
+  }
+
+  # Making sure that J and L have the right properties
+  if (!is.numeric(J) || length(J) != 1 || J <= 0 || J != as.integer(J)) {
+    stop("J must be a positive integer scalar")
+  }
+
+  if (!is.numeric(L) || length(L) != 1 || L <= 0 || L != as.integer(L)) {
+    stop("L must be a positive integer scalar")
+  }
+
+  if (!is.numeric(JTest) || length(JTest) != 1 || JTest <= 0 || JTest != as.integer(JTest)) {
+    stop("JTest must be a positive integer scalar")
+  }
+
+  if (!is.numeric(LTest) || length(LTest) != 1 || LTest <= 0 || LTest != as.integer(LTest)) {
+    stop("LTest must be a positive integer scalar")
+  }
+
   if(J*L != ncol(scrs)){
     stop('Provided values for J and L do not correspond to the number of columns in scrs')
   }
 
   if(JTest > J || LTest > L){
     stop('JTest and LTest can be at most J and L, respectively')
+  }
+
+  # Might update later
+  if (JTest < 1 || LTest < 1) {
+    stop("JTest and LTest must be at least 1")
+  }
+
+  # Make sure each score has at least 1 row
+  if (nrow(scrs) < 1) {
+    stop("scrs must have at least one row")
   }
 
   n <- nrow(scrs)
@@ -33,6 +75,7 @@ getELTestData <- function(scrs, J, L, JTest = J, LTest = L) {
 
   # Get all distinct products of columns of scrs
   A <- getIndSets(JTest, LTest)
+
   scrsAug <- scrs[, A$A1, drop = FALSE] * scrs[, A$A2, drop = FALSE]
 
   return(scrsAug = scrsAug)

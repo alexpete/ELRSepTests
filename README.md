@@ -16,6 +16,13 @@ The package implements methods based on (constrained) empirical
 likelihood evaluation and optimization, combining R and C++ (via Rcpp)
 for efficient computation.
 
+## Dependencies
+
+The package requires the packages `MASS`, `Rcpp`, `RcppArmadillo`,
+`melt`, and `covsep` to be installed. All but `covsep` are available on
+CRAN for R version 4.6.0, and `covsep` can be installed using the [CRAN
+archive](https://cran.r-project.org/web/packages/covsep/index.html).
+
 ## Installation
 
 You can install the development version of ELRSepTests from
@@ -63,10 +70,10 @@ res$tStats
 #>            (2, 2)
 #> ParSep 4.56986975
 #> WkSep  6.87955536
-#> Sep    0.05054832
+#> Sep    0.05054868
 res$bootPval
 #>           (2, 2)
-#> ParSep 0.6039604
-#> WkSep  0.3762376
-#> Sep    0.9207921
+#> ParSep 0.7029703
+#> WkSep  0.3861386
+#> Sep    0.9306931
 ```

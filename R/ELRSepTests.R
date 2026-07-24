@@ -21,6 +21,22 @@
 #' @param mnBoot integer no larger than n giving the size of bootstrap samples
 #'               to be drawn - an m-out-of-n bootstrap.  Default is `mnBoot = n`
 #'               for a full bootstrap
+#' @param calibration subset of c('elBoot', 'quadForm') indicating which bootstrap
+#'               calibration method(s) to compute (default is `'elBoot'` only, matching
+#'               earlier package versions). `'elBoot'` calibrates by re-running EL
+#'               optimization on each null-constrained bootstrap sample. `'quadForm'`
+#'               instead estimates `V0` (and, for the separable null, `U0`) once from
+#'               the full sample and, for each bootstrap replicate, plugs the bootstrap
+#'               score-product mean vector into the fixed quadratic forms of Theorem 3
+#'               of the manuscript - avoiding EL/constrained re-optimization (including
+#'               the nested outer optimization otherwise required under the separable
+#'               null) inside the bootstrap loop entirely. The observed statistics in
+#'               `tStats` do not depend on `calibration`. If both methods are requested,
+#'               they are computed from the *same* bootstrap draw at each replicate (no
+#'               extra resampling cost), and `bootPval`/`tStatsBoot` are then returned as
+#'               named lists keyed by calibration method; with a single calibration
+#'               method (the default), their structure is unchanged from earlier package
+#'               versions (see `Value`).
 #' @param LSmax for finding the MELE under separability, the maximum number of line
 #'                search steps to take (default = 100L)
 #' @param ELctrl an object of class ControlEL defining options for EL estimation;
@@ -41,18 +57,31 @@
 #'                      for fitting a given type of separability with secondary index
 #'                      corresponding to distinct pairs `(J, L)`.
 #'         - bootPval: matrix of bootstrap p-values, with different null hypotheses
-#'                     indexing the rows and distinct pairs `(J, L)` indexing columns
+#'                     indexing the rows and distinct pairs `(J, L)` indexing columns.
+#'                     If `length(calibration) > 1`, this is instead a named list of
+#'                     such matrices, one per element of `calibration` (e.g.
+#'                     `bootPval$elBoot`, `bootPval$quadForm`)
 #'         - tStatsBoot: list of bootstrap test statistics, `tStatsBoot[[a]]` is a matrix
 #'                      of bootstrap test statistics for the corresponding null
 #'                      hypothesis with rows indexed by bootstrap samples and
 #'                      columns indexed by distinct pairs `(J, L)`. Set to NA if
-#'                      thin = TRUE
+#'                      thin = TRUE. If `length(calibration) > 1`, this is instead a
+#'                      named list keyed by calibration method, each element having
+#'                      this same list-by-null-hypothesis structure (e.g.
+#'                      `tStatsBoot$quadForm$ParSep`)
+#'         - V0: only present when `'quadForm' %in% calibration`. List (indexed by
+#'               distinct pairs `(J, L)`) of full-sample V0 estimates (see Theorem 3
+#'               of the manuscript)
+#'         - U0: only present when `'quadForm' %in% calibration` and `'Sep' %in% nullHyp`.
+#'               List (indexed by distinct pairs `(J, L)`) of full-sample U0 estimates
 #' @export
 
 ELRSepTests <- function(X, tt1 = NULL, tt2 = NULL,
                         JTest = 2L, LTest = 2L,
                         nullHyp = c('ParSep', 'WkSep', 'Sep'),
-                        B = 500L, mnBoot = dim(X)[1], LSmax = 100L,
+                        B = 500L, mnBoot = dim(X)[1],
+                        calibration = 'elBoot',
+                        LSmax = 100L,
                         ELctrl = melt::el_control(maxit = 10000L, maxit_l = 1000L),
                         FVEthres = 0.99,
                         thin = TRUE){
@@ -104,6 +133,19 @@ ELRSepTests <- function(X, tt1 = NULL, tt2 = NULL,
     }
   }
 
+  calibList <- c('elBoot', 'quadForm')
+  tmpCal <- calibration %in% calibList
+  if(!all(tmpCal)){
+    if(!any(tmpCal)){
+      warning('All provided values in calibration are invalid - resetting to default')
+      calibration <- 'elBoot'
+    } else {
+      warning('Removing invalid elements of calibration')
+      calibration <- calibration[tmpCal]
+    }
+  }
+  calibration <- unique(calibration)
+
   ELctrlBoot <- ELctrl
   ELctrlBoot@verbose = FALSE
 
@@ -142,10 +184,24 @@ ELRSepTests <- function(X, tt1 = NULL, tt2 = NULL,
   colnames(tStats) <- dimsList
   bootPval <- tStats
 
+  # Per-calibration-method output containers. When only one calibration method is
+  # requested (the default), bootPvalList/tStatsBootList are unwrapped to their single
+  # element before being returned, so existing single-calibration callers see the same
+  # flat structure as always; with more than one, they stay as named lists keyed by
+  # calibration method (see `calibration` above)
+
+  bootPvalList <- vector("list", length(calibration))
+  names(bootPvalList) <- calibration
+  for(cal in calibration) bootPvalList[[cal]] <- bootPval
+
   # Bootstrap results storage
   if(!thin){
-    tStatsBoot <- vector(mode = "list", length = numTests)
-    names(tStatsBoot) <- nullHyp
+    tStatsBootList <- vector("list", length(calibration))
+    names(tStatsBootList) <- calibration
+    for(cal in calibration){
+      tStatsBootList[[cal]] <- vector(mode = "list", length = numTests)
+      names(tStatsBootList[[cal]]) <- nullHyp
+    }
   }
 
   # Get necessary EL Fits
@@ -156,36 +212,89 @@ ELRSepTests <- function(X, tt1 = NULL, tt2 = NULL,
   ELstats <- ELRes$ELstats
   conv <- ELRes$conv
 
+  # For quadForm calibration, precompute fixed full-sample V0 (and, for Sep, U0)
+  # estimates once per (J, L); these feed the Theorem 3 quadratic forms used to
+  # calibrate every bootstrap replicate below, replacing bootstrap-level EL
+  # re-optimization (see `calibration` above)
+
+  if('quadForm' %in% calibration){
+    V0list <- vector("list", q)
+    U0list <- vector("list", q)
+    lamS0list <- vector("list", q)
+    NPvec <- integer(q); NWvec <- integer(q); NSvec <- integer(q)
+
+    for(jl in 1:q){
+      Jc <- JTest[jl]; Lc <- LTest[jl]
+      NPvec[jl] <- Jc*Jc*Lc*(Lc - 1)/2
+      NWvec[jl] <- Lc*Jc*(Jc - 1)/2
+      NSvec[jl] <- Jc*Lc
+
+      jlIndsSep <- which((pmax(scrsInd[, 1], scrsInd[, 2]) <= Jc) &
+                          (pmax(scrsInd[, 3], scrsInd[, 4]) <= Lc))
+      scrsAugCur <- scrsAug[, jlIndsSep, drop = FALSE]
+      V0list[[jl]] <- getV0Hat(scrsAugCur)
+
+      if('Sep' %in% nullHyp && isTRUE(conv$Sep[jl])){
+        thetaSFull <- tail(ELRes$ELoptInfo$Sep[[jl]]$par, NSvec[jl])
+        thetaPars <- getThetaFromThetaS(thetaSFull, Jc, Lc)
+        U0list[[jl]] <- getU0Hat(V0list[[jl]], thetaPars$theta01, thetaPars$theta02,
+                                 NPvec[jl], NWvec[jl], Jc, Lc)$U0
+        lamS0list[[jl]] <- thetaSFull
+      }
+    }
+  }
+
   if('ParSep' %in% nullHyp){ # Get Test Statistic and Run Bootstrap under ParSep Null
 
     tStats['ParSep', ] <- ELstats['ParSep', ]
 
     tStatsBootPS <- vapply(1:B, function(b){
-      # Set up outputs as if all likelihoods are zero
-      val <- rep(NA, q)
+      # Set up outputs as if all likelihoods are zero; columns correspond to calibration
+      val <- matrix(NA, nrow = q, ncol = length(calibration), dimnames = list(NULL, calibration))
 
       if(any(conv$ParSep)){ # Run bootstraps for values (J, L) with non-zero likelihood
         convInd <- which(conv$ParSep)
         JTestMaxBoot <- max(JTest[convInd])
         LTestMaxBoot <- max(LTest[convInd])
 
-        Xboot <- drawBoot(MBE, 'ParSep', mnBoot) # Null bootstrap under ParSep
+        Xboot <- drawBoot(MBE, 'ParSep', mnBoot) # Null bootstrap under ParSep - shared across calibration methods
         MBEboot <- getMBExp(Xboot, tt1 = tt1, tt2 = tt2, J = JTestMaxBoot, L = LTestMaxBoot, useFVE = TRUE)
         MBEboot <- alignMBEBoot(MBE, MBEboot, JTest[convInd], LTest[convInd], tt1, tt2)
 
         scrsAugBoot <- getELTestData(MBEboot$scrs, J = JTestMaxBoot, L = LTestMaxBoot)
         scrsIndBoot <- getScrsInd(JTestMaxBoot, LTestMaxBoot) # for indexing columns of scrsAugBoot
 
-        ELResBoot <- getELFits(scrsAugBoot, 'ParSep', JTest[convInd], LTest[convInd], scrsIndBoot, ELctrlBoot, LSmax)
-        val[convInd] <- ELResBoot$ELstats['ParSep', ]
+        if('elBoot' %in% calibration){
+          ELResBoot <- getELFits(scrsAugBoot, 'ParSep', JTest[convInd], LTest[convInd], scrsIndBoot, ELctrlBoot, LSmax)
+          val[convInd, 'elBoot'] <- ELResBoot$ELstats['ParSep', ]
+        }
+        if('quadForm' %in% calibration){ # no EL re-optimization, just plug hlam* into the fixed V0 quadratic form
+          for(jl in convInd){
+            Jc <- JTest[jl]; Lc <- LTest[jl]
+            jlIndsBoot <- which((pmax(scrsIndBoot[, 1], scrsIndBoot[, 2]) <= Jc) &
+                                 (pmax(scrsIndBoot[, 3], scrsIndBoot[, 4]) <= Lc) &
+                                 (scrsIndBoot[, 3] < scrsIndBoot[, 4]))
+            hlamBootP <- colMeans(scrsAugBoot[, jlIndsBoot, drop = FALSE])
+            qf <- getQFQuantities(hlamBootP, mnBoot,
+                                  V0list[[jl]][seq_len(NPvec[jl]), seq_len(NPvec[jl]), drop = FALSE],
+                                  NPvec[jl], 0L, NSvec[jl])
+            val[jl, 'quadForm'] <- qf["qP"]
+          }
+        }
       }
 
-      return(val)
-    }, FUN.VALUE = numeric(q))
-    tStatsBootPS <- matrix(tStatsBootPS, nrow = B, ncol = q, byrow = TRUE, dimnames = list(1:B, dimsList))
+      return(as.vector(val))
+    }, FUN.VALUE = numeric(q * length(calibration)))
+    tStatsBootPS <- matrix(tStatsBootPS, nrow = q * length(calibration), ncol = B) # robust reshape even if q*length(calibration) == 1
 
-    bootPval['ParSep', ] <- ifelse(conv$ParSep, sapply(1:q, \(jl) (sum(tStatsBootPS[, jl] > tStats['ParSep', jl]) + 1) / (B + 1)), 0)
-    if(!thin) tStatsBoot$ParSep <- tStatsBootPS
+    for(ci in seq_along(calibration)){
+      cal <- calibration[ci]
+      rowsCi <- ((ci - 1) * q + 1):(ci * q)
+      tStatsBootPSCal <- matrix(tStatsBootPS[rowsCi, , drop = FALSE], nrow = B, ncol = q, byrow = TRUE, dimnames = list(1:B, dimsList))
+
+      bootPvalList[[cal]]['ParSep', ] <- ifelse(conv$ParSep, sapply(1:q, \(jl) (sum(tStatsBootPSCal[, jl] > tStats['ParSep', jl]) + 1) / (B + 1)), 0)
+      if(!thin) tStatsBootList[[cal]]$ParSep <- tStatsBootPSCal
+    }
   }
 
   if('WkSep' %in% nullHyp){ # Run Test for Weak Separability
@@ -193,32 +302,54 @@ ELRSepTests <- function(X, tt1 = NULL, tt2 = NULL,
     tStats['WkSep', ] <- ifelse(conv$ParSep, ifelse(conv$WkSep, ELstats['WkSep', ] - ELstats['ParSep', ], Inf), NA)
 
     tStatsBootWS <- vapply(1:B, function(b){
-      # Set up outputs as if all likelihoods are zero
-      val <- rep(NA, q)
+      # Set up outputs as if all likelihoods are zero; columns correspond to calibration
+      val <- matrix(NA, nrow = q, ncol = length(calibration), dimnames = list(NULL, calibration))
 
       if(any(conv$WkSep)){ # Run bootstraps for values (J, L) with non-zero likelihood
         convInd <- which(conv$WkSep)
         JTestMaxBoot <- max(JTest[convInd])
         LTestMaxBoot <- max(LTest[convInd])
 
-        Xboot <- drawBoot(MBE, 'WkSep', mnBoot) # Null bootstrap under WkSep
+        Xboot <- drawBoot(MBE, 'WkSep', mnBoot) # Null bootstrap under WkSep - shared across calibration methods
         MBEboot <- getMBExp(Xboot, tt1 = tt1, tt2 = tt2, J = JTestMaxBoot, L = LTestMaxBoot, useFVE = TRUE)
         MBEboot <- alignMBEBoot(MBE, MBEboot, JTest[convInd], LTest[convInd], tt1, tt2)
 
         scrsAugBoot <- getELTestData(MBEboot$scrs, J = JTestMaxBoot, L = LTestMaxBoot)
         scrsIndBoot <- getScrsInd(JTestMaxBoot, LTestMaxBoot) # for indexing columns of scrsAugBoot
 
-        ELResBoot <- getELFits(scrsAugBoot, 'WkSep', JTest[convInd], LTest[convInd], scrsIndBoot, ELctrlBoot, LSmax)
-        val[convInd] <- ifelse(ELResBoot$conv$ParSep, ELResBoot$ELstats['WkSep', ] - ELResBoot$ELstats['ParSep', ], Inf)
+        if('elBoot' %in% calibration){
+          ELResBoot <- getELFits(scrsAugBoot, 'WkSep', JTest[convInd], LTest[convInd], scrsIndBoot, ELctrlBoot, LSmax)
+          val[convInd, 'elBoot'] <- ifelse(ELResBoot$conv$ParSep, ELResBoot$ELstats['WkSep', ] - ELResBoot$ELstats['ParSep', ], Inf)
+        }
+        if('quadForm' %in% calibration){
+          for(jl in convInd){
+            Jc <- JTest[jl]; Lc <- LTest[jl]
+            jlIndsBoot <- which((pmax(scrsIndBoot[, 1], scrsIndBoot[, 2]) <= Jc) &
+                                 (pmax(scrsIndBoot[, 3], scrsIndBoot[, 4]) <= Lc) &
+                                 (((scrsIndBoot[, 3] < scrsIndBoot[, 4])) |
+                                    ((scrsIndBoot[, 3] == scrsIndBoot[, 4]) & scrsIndBoot[, 1] < scrsIndBoot[, 2])))
+            hlamBootPW <- colMeans(scrsAugBoot[, jlIndsBoot, drop = FALSE])
+            NPWc <- NPvec[jl] + NWvec[jl]
+            qf <- getQFQuantities(hlamBootPW, mnBoot,
+                                  V0list[[jl]][seq_len(NPWc), seq_len(NPWc), drop = FALSE],
+                                  NPvec[jl], NWvec[jl], NSvec[jl])
+            val[jl, 'quadForm'] <- qf["qPW"] - qf["qP"]
+          }
+        }
       }
 
-      return(val)
-    }, FUN.VALUE = numeric(q))
-    tStatsBootWS <- matrix(tStatsBootWS, nrow = B, ncol = q, byrow = TRUE, dimnames = list(1:B, dimsList))
+      return(as.vector(val))
+    }, FUN.VALUE = numeric(q * length(calibration)))
+    tStatsBootWS <- matrix(tStatsBootWS, nrow = q * length(calibration), ncol = B)
 
-    bootPval['WkSep', ] <- ifelse(conv$WkSep, sapply(1:q, \(jl) (sum(tStatsBootWS[, jl] > tStats['WkSep', jl]) + 1) / (B + 1)), 0)
+    for(ci in seq_along(calibration)){
+      cal <- calibration[ci]
+      rowsCi <- ((ci - 1) * q + 1):(ci * q)
+      tStatsBootWSCal <- matrix(tStatsBootWS[rowsCi, , drop = FALSE], nrow = B, ncol = q, byrow = TRUE, dimnames = list(1:B, dimsList))
 
-    if(!thin) tStatsBoot$WkSep <- tStatsBootWS
+      bootPvalList[[cal]]['WkSep', ] <- ifelse(conv$WkSep, sapply(1:q, \(jl) (sum(tStatsBootWSCal[, jl] > tStats['WkSep', jl]) + 1) / (B + 1)), 0)
+      if(!thin) tStatsBootList[[cal]]$WkSep <- tStatsBootWSCal
+    }
   }
 
   if('Sep' %in% nullHyp){ # Run Test for Separability
@@ -226,34 +357,68 @@ ELRSepTests <- function(X, tt1 = NULL, tt2 = NULL,
     tStats['Sep', ] <- ifelse(conv$WkSep, ifelse(conv$Sep, ELstats['Sep', ] - ELstats['WkSep', ], Inf), NA)
 
     tStatsBootS <- vapply(1:B, function(b){
-      # Set up outputs as if all likelihoods are zero
-      val <- rep(NA, q)
+      # Set up outputs as if all likelihoods are zero; columns correspond to calibration
+      val <- matrix(NA, nrow = q, ncol = length(calibration), dimnames = list(NULL, calibration))
 
       if(any(conv$Sep)){ # Run bootstraps for values (J, L) with non-zero likelihood
         convInd <- which(conv$Sep)
         JTestMaxBoot <- max(JTest[convInd])
         LTestMaxBoot <- max(LTest[convInd])
-        Xboot <- drawBoot(MBE, 'Sep', mnBoot) # Null bootstrap under Sep
+        Xboot <- drawBoot(MBE, 'Sep', mnBoot) # Null bootstrap under Sep - shared across calibration methods
         MBEboot <- getMBExp(Xboot, tt1 = tt1, tt2 = tt2, J = JTestMaxBoot, L = LTestMaxBoot, useFVE = TRUE)
         MBEboot <- alignMBEBoot(MBE, MBEboot, JTest[convInd], LTest[convInd], tt1, tt2)
 
         scrsAugBoot <- getELTestData(MBEboot$scrs, J = JTestMaxBoot, L = LTestMaxBoot)
         scrsIndBoot <- getScrsInd(JTestMaxBoot, LTestMaxBoot) # for indexing columns of scrsAugBoot
 
-        ELResBoot <- getELFits(scrsAugBoot, 'Sep', JTest[convInd], LTest[convInd], scrsIndBoot, ELctrlBoot, LSmax)
-        val[convInd] <- ifelse(ELResBoot$conv$WkSep, ELResBoot$ELstats['Sep', ] - ELResBoot$ELstats['WkSep', ], Inf)
+        if('elBoot' %in% calibration){
+          ELResBoot <- getELFits(scrsAugBoot, 'Sep', JTest[convInd], LTest[convInd], scrsIndBoot, ELctrlBoot, LSmax)
+          val[convInd, 'elBoot'] <- ifelse(ELResBoot$conv$WkSep, ELResBoot$ELstats['Sep', ] - ELResBoot$ELstats['WkSep', ], Inf)
+        }
+        if('quadForm' %in% calibration){ # no nested outer/inner EL optimization at all
+          for(jl in convInd){
+            Jc <- JTest[jl]; Lc <- LTest[jl]
+            jlIndsBoot <- which((pmax(scrsIndBoot[, 1], scrsIndBoot[, 2]) <= Jc) &
+                                 (pmax(scrsIndBoot[, 3], scrsIndBoot[, 4]) <= Lc))
+            hlamBootFull <- colMeans(scrsAugBoot[, jlIndsBoot, drop = FALSE])
+            qf <- getQFQuantities(hlamBootFull, mnBoot, V0list[[jl]],
+                                  NPvec[jl], NWvec[jl], NSvec[jl],
+                                  U0hat = U0list[[jl]], lamS0 = lamS0list[[jl]])
+            val[jl, 'quadForm'] <- qf["qS"] - qf["qPW"]
+          }
+        }
       }
 
-      return(val)
-    }, FUN.VALUE = numeric(q))
-    tStatsBootS <- matrix(tStatsBootS, nrow = B, ncol = q, byrow = TRUE, dimnames = list(1:B, dimsList))
-    bootPval['Sep', ] <- ifelse(conv$Sep, sapply(1:q, \(jl) (sum(tStatsBootS[, jl] > tStats['Sep', jl]) + 1) / (B + 1)), 0)
+      return(as.vector(val))
+    }, FUN.VALUE = numeric(q * length(calibration)))
+    tStatsBootS <- matrix(tStatsBootS, nrow = q * length(calibration), ncol = B)
 
-    if(!thin) tStatsBoot$Sep <- tStatsBootS
+    for(ci in seq_along(calibration)){
+      cal <- calibration[ci]
+      rowsCi <- ((ci - 1) * q + 1):(ci * q)
+      tStatsBootSCal <- matrix(tStatsBootS[rowsCi, , drop = FALSE], nrow = B, ncol = q, byrow = TRUE, dimnames = list(1:B, dimsList))
+
+      bootPvalList[[cal]]['Sep', ] <- ifelse(conv$Sep, sapply(1:q, \(jl) (sum(tStatsBootSCal[, jl] > tStats['Sep', jl]) + 1) / (B + 1)), 0)
+      if(!thin) tStatsBootList[[cal]]$Sep <- tStatsBootSCal
+    }
   }
 
-  res <- list(tStats = tStats, bootPval = bootPval, ELoptInfo = ELRes$ELoptInfo)
-  if(!thin) res$tStatsBoot <- tStatsBoot
+  # Unwrap to the flat (pre-multi-calibration) structure when only one calibration
+  # method was requested, so single-calibration callers see an unchanged return shape
+  if(length(calibration) == 1){
+    bootPvalOut <- bootPvalList[[1]]
+    if(!thin) tStatsBootOut <- tStatsBootList[[1]]
+  } else {
+    bootPvalOut <- bootPvalList
+    if(!thin) tStatsBootOut <- tStatsBootList
+  }
+
+  res <- list(tStats = tStats, bootPval = bootPvalOut, ELoptInfo = ELRes$ELoptInfo)
+  if('quadForm' %in% calibration){
+    res$V0 <- V0list
+    if('Sep' %in% nullHyp) res$U0 <- U0list
+  }
+  if(!thin) res$tStatsBoot <- tStatsBootOut
   return(res)
 
 }
